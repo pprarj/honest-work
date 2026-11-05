@@ -1,0 +1,1384 @@
+/* Honest Work - Workers of Skyrim - operator panel (Fase 17, D167).
+ *
+ * Full screen, translucent over the game. One set of tokens below; every
+ * colour, size and gap in the file goes through them. The root font size
+ * follows the viewport width, so 1920x1080 and 2560x1440 keep the same
+ * layout at a readable size (rem everywhere else).
+ *
+ * Fonts (D170): Cinzel for titles and Source Sans 3 for text, both SIL Open
+ * Font License 1.1, bundled from @fontsource (licence texts ship with the
+ * package; ui-prisma/public/FONTS-LICENSE.txt, copied into the build).
+ */
+
+:root {
+  /* D189: frost - cold steel and ice blue. */
+  --bg: rgba(7, 10, 14, 0.84);
+  --bg-glow: rgba(70, 112, 150, 0.20);
+  --surface: rgba(20, 27, 35, 0.80);
+  --surface-hi: rgba(31, 41, 53, 0.88);
+  --line: rgba(170, 200, 230, 0.14);
+  --line-strong: rgba(170, 200, 230, 0.32);
+  --text: #e6edf3;
+  --text-dim: #aebdcb;
+  --muted: #8d9db0;
+  --accent: #8cc4e8;
+  --accent-ink: #0b1620;
+  --accent-soft: rgba(140, 196, 232, 0.14);
+  --good: #8fd0a6;
+  --bad: #e8907f;
+  --away: #b9a7e6;
+  --ready: #e6c77e;
+  /* D188: the colours that used to be written inline below. */
+  --accent-fade: rgba(140, 196, 232, 0.45);
+  --bad-line: rgba(232, 144, 127, 0.6);
+  --bad-line-soft: rgba(232, 144, 127, 0.4);
+  --bad-soft: rgba(232, 144, 127, 0.08);
+  --node-bg: #111922;
+  --tint: rgba(255, 255, 255, 0.03);
+
+  --font-title: "Cinzel", "Trajan Pro", Georgia, serif;
+  --font-text: "Source Sans 3", "Segoe UI", Arial, sans-serif;
+
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.875rem;
+  --fs-md: 1rem;
+  --fs-lg: 1.25rem;
+  --fs-xl: 1.75rem;
+  --fs-2xl: 2.5rem;
+  --fs-3xl: 3.25rem;
+
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.5rem;
+  --sp-6: 2rem;
+  --sp-7: 3rem;
+
+  --radius: 0.375rem;
+  --side-width: 22rem;
+  --tracking-title: 0.18em;
+  --tracking-eyebrow: 0.14em;
+
+  /* ~17px at 1920 wide, ~22px at 2560; never below 14px. */
+  font-size: clamp(14px, calc(0.7vw + 3.6px), 24px);
+}
+
+/* D188 (Fase 18): candidate palettes, chosen by ?tema= (theme.ts). Same
+ * tokens as :root above. D189: the default (:root) is frost. */
+:root[data-theme="amber"] {
+  /* warm amber, the panel's first palette (Fase 17) */
+  --bg: rgba(9, 8, 7, 0.82);
+  --bg-glow: rgba(120, 84, 38, 0.18);
+  --surface: rgba(30, 26, 21, 0.78);
+  --surface-hi: rgba(46, 39, 31, 0.86);
+  --line: rgba(214, 190, 150, 0.14);
+  --line-strong: rgba(214, 190, 150, 0.32);
+  --text: #ece4d6;
+  --text-dim: #b9ad99;
+  --muted: #8f8573;
+  --accent: #d6a651;
+  --accent-ink: #1b1409;
+  --accent-soft: rgba(214, 166, 81, 0.14);
+  --good: #9cc382;
+  --bad: #d77a62;
+  --away: #86afcf;
+  --ready: #d6a651;
+  --accent-fade: rgba(214, 166, 81, 0.45);
+  --bad-line: rgba(215, 122, 98, 0.6);
+  --bad-line-soft: rgba(215, 122, 98, 0.4);
+  --bad-soft: rgba(215, 122, 98, 0.08);
+  --node-bg: #1d1913;
+  --tint: rgba(255, 255, 255, 0.03);
+}
+
+:root[data-theme="moss"] {
+  /* dark forest green with lichen */
+  --bg: rgba(7, 10, 8, 0.84);
+  --bg-glow: rgba(78, 112, 60, 0.20);
+  --surface: rgba(22, 29, 23, 0.80);
+  --surface-hi: rgba(33, 43, 34, 0.88);
+  --line: rgba(190, 214, 170, 0.14);
+  --line-strong: rgba(190, 214, 170, 0.32);
+  --text: #e7ecdf;
+  --text-dim: #b1bea6;
+  --muted: #919e86;
+  --accent: #b3cf7f;
+  --accent-ink: #121a0b;
+  --accent-soft: rgba(179, 207, 127, 0.14);
+  --good: #7fd1b6;
+  --bad: #e58a70;
+  --away: #93bcdc;
+  --ready: #e3bf6a;
+  --accent-fade: rgba(179, 207, 127, 0.45);
+  --bad-line: rgba(229, 138, 112, 0.6);
+  --bad-line-soft: rgba(229, 138, 112, 0.4);
+  --bad-soft: rgba(229, 138, 112, 0.08);
+  --node-bg: #131b14;
+  --tint: rgba(255, 255, 255, 0.03);
+}
+
+:root[data-theme="parchment"] {
+  /* light: ink on parchment */
+  --bg: rgba(226, 214, 190, 0.92);
+  --bg-glow: rgba(255, 244, 214, 0.40);
+  --surface: rgba(248, 241, 226, 0.88);
+  --surface-hi: rgba(255, 250, 240, 0.95);
+  --line: rgba(80, 60, 30, 0.16);
+  --line-strong: rgba(80, 60, 30, 0.34);
+  --text: #2a2117;
+  --text-dim: #504331;
+  --muted: #685a46;
+  --accent: #8a4b1c;
+  --accent-ink: #fbf3e4;
+  --accent-soft: rgba(138, 75, 28, 0.12);
+  --good: #3d6b29;
+  --bad: #a3392a;
+  --away: #2e5c83;
+  --ready: #8a4b1c;
+  --accent-fade: rgba(138, 75, 28, 0.45);
+  --bad-line: rgba(163, 57, 42, 0.6);
+  --bad-line-soft: rgba(163, 57, 42, 0.4);
+  --bad-soft: rgba(163, 57, 42, 0.08);
+  --node-bg: #f1e6cf;
+  --tint: rgba(0, 0, 0, 0.03);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  background: transparent;
+  color: var(--text);
+  font-family: var(--font-text);
+  font-size: var(--fs-md);
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+/* --- frame --------------------------------------------------------------- */
+
+.hw-screen {
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at 15% 0%, var(--bg-glow), transparent 55%),
+    var(--bg);
+  overflow: hidden;
+}
+
+.hw-frame {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  max-width: 110rem;
+  margin: 0 auto;
+  padding: var(--sp-6) var(--sp-7);
+}
+
+.hw-header {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-6);
+  padding-bottom: var(--sp-4);
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.hw-brand {
+  display: flex;
+  flex-direction: column;
+  width: var(--side-width);
+  flex: none;
+}
+
+.hw-brand-title {
+  font-family: var(--font-title);
+  font-weight: 600;
+  font-size: var(--fs-xl);
+  letter-spacing: var(--tracking-title);
+  text-transform: uppercase;
+  color: var(--accent);
+  line-height: 1.1;
+}
+
+.hw-brand-sub {
+  color: var(--muted);
+  font-size: var(--fs-sm);
+  letter-spacing: 0.04em;
+}
+
+.hw-tabs {
+  display: flex;
+  gap: var(--sp-2);
+  flex: 1;
+}
+
+.hw-tab,
+.hw-close {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: var(--sp-2) var(--sp-4);
+  font-family: var(--font-title);
+  font-weight: 600;
+  font-size: var(--fs-md);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.hw-tab:hover,
+.hw-close:hover {
+  color: var(--text);
+}
+
+.hw-tab.is-active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.hw-tab-key {
+  font-family: var(--font-text);
+  font-size: var(--fs-xs);
+  letter-spacing: 0;
+  color: var(--muted);
+  border: 1px solid var(--line-strong);
+  border-radius: 0.2rem;
+  padding: 0 0.3rem;
+  line-height: 1.4;
+}
+
+.hw-close {
+  margin-left: auto;
+}
+
+.hw-body {
+  display: flex;
+  gap: var(--sp-6);
+  flex: 1;
+  min-height: 0;
+  padding-top: var(--sp-5);
+}
+
+.hw-main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding-right: var(--sp-2);
+}
+
+.hw-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  padding-bottom: var(--sp-6);
+}
+
+.hw-wait {
+  padding: var(--sp-6) 0;
+}
+
+/* --- shared text ---------------------------------------------------------- */
+
+.hw-muted {
+  color: var(--muted);
+}
+
+.hw-strong {
+  font-weight: 600;
+}
+
+.hw-bad {
+  color: var(--bad);
+}
+
+.hw-good {
+  color: var(--good);
+}
+
+.hw-eyebrow {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.hw-notice {
+  margin: var(--sp-3) 0 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-left: 2px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+}
+
+/* --- state dot ------------------------------------------------------------ */
+
+.hw-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+}
+
+/* Fase 33 etapa 7 (D281): live text that is swapped, not edited (LiveText.tsx).
+   Fase 33 etapa 8 (D3): nowrap kept the line whole, and a long one ("Cooking at
+   Breezehome, ~5 h left") ran over the gold figure of the roster card. The flex
+   chain needs min-width 0 for the ellipsis to cut it instead. */
+.hw-live-text {
+  white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.hw-state {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.hw-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--muted);
+  flex: none;
+}
+
+.hw-tone-away .hw-dot {
+  background: var(--away);
+}
+.hw-tone-ready .hw-dot {
+  background: var(--ready);
+  box-shadow: 0 0 0.4rem var(--ready);
+}
+.hw-tone-hurt .hw-dot {
+  background: var(--bad);
+}
+.hw-tone-gone .hw-dot {
+  background: transparent;
+  border: 1px solid var(--muted);
+}
+.hw-tone-idle .hw-dot {
+  background: var(--good);
+}
+
+/* --- left column ---------------------------------------------------------- */
+
+.hw-side {
+  width: var(--side-width);
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.hw-side-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding: 0 var(--sp-3) var(--sp-2);
+}
+
+.hw-side-count {
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+}
+
+.hw-side-empty {
+  padding: 0 var(--sp-3);
+}
+
+.hw-roster,
+.hw-mini-list,
+.hw-ledger,
+.hw-task-list,
+.hw-ladder {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hw-roster li + li {
+  margin-top: var(--sp-1);
+}
+
+/* Fase 33 etapa 9 (E2, replaces D285): the card is a column - eyebrow, a line with the name
+   and the gold, then the state on a line of its own at the card's full width. */
+.hw-roster-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-1);
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  border-left: 3px solid transparent;
+  border-radius: var(--radius);
+  padding: var(--sp-3) var(--sp-3);
+  cursor: pointer;
+}
+
+.hw-roster-row:hover {
+  background: var(--surface);
+}
+
+.hw-roster-row.is-selected {
+  background: var(--surface-hi);
+  border-color: var(--line);
+  border-left-color: var(--accent);
+}
+
+.hw-roster-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.hw-roster-name {
+  font-family: var(--font-title);
+  font-weight: 600;
+  font-size: var(--fs-lg);
+  line-height: 1.2;
+  margin: 0.1rem 0 0.2rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The state of a roster card: the full width, up to two lines, never an ellipsis. */
+.hw-state-card {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.hw-state-card .hw-dot {
+  margin-top: 0.4em;
+}
+
+.hw-state-card .hw-live-text {
+  white-space: normal;
+  overflow: hidden;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+
+/* The WORKER header: same rule, the state wraps beside the figures instead of being cut. */
+.hw-hero-id {
+  flex: 1 1 auto;
+}
+
+.hw-hero-id .hw-state {
+  display: flex;
+  align-items: flex-start;
+}
+
+.hw-hero-id .hw-state .hw-dot {
+  margin-top: 0.4em;
+}
+
+.hw-hero-id .hw-live-text {
+  white-space: normal;
+  overflow: hidden;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  line-height: 1.3;
+}
+
+.hw-roster-figure {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex: none;
+  white-space: nowrap;
+}
+
+.hw-roster-number {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.hw-roster-unit {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.hw-side-foot {
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+}
+
+.hw-mini-row {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: 0;
+  padding: var(--sp-2) var(--sp-3);
+  text-align: left;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  border-radius: var(--radius);
+}
+
+.hw-mini-row:hover {
+  background: var(--surface);
+}
+
+.hw-mini-name {
+  font-weight: 600;
+}
+
+.hw-mini-price {
+  color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- cards and figures ---------------------------------------------------- */
+
+.hw-card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--sp-5);
+}
+
+.hw-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-4);
+}
+
+.hw-card-title {
+  margin: 0 0 var(--sp-4);
+  font-family: var(--font-title);
+  font-weight: 600;
+  font-size: var(--fs-md);
+  letter-spacing: var(--tracking-title);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.hw-card-head .hw-card-title {
+  margin: 0;
+}
+
+.hw-figures {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-4);
+}
+
+.hw-figure {
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-5);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.hw-figure-value {
+  font-size: var(--fs-3xl);
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.hw-figure.is-accent .hw-figure-value {
+  color: var(--accent);
+}
+
+.hw-figure-label {
+  margin-top: var(--sp-3);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+.hw-figure-unit {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+.hw-columns {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+.hw-columns-wide {
+  grid-template-columns: 1.6fr 1fr;
+}
+
+/* --- statement ------------------------------------------------------------ */
+
+.hw-day + .hw-day {
+  margin-top: var(--sp-4);
+}
+
+.hw-day-title {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.hw-ledger-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-sm);
+}
+
+.hw-ledger-amount {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.hw-ledger-spent .hw-ledger-amount {
+  color: var(--text-dim);
+}
+.hw-ledger-earned .hw-ledger-amount {
+  color: var(--good);
+}
+.hw-ledger-bad .hw-ledger-text {
+  color: var(--bad);
+}
+
+/* --- tables --------------------------------------------------------------- */
+
+.hw-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+
+.hw-table th {
+  text-align: left;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 0 var(--sp-3) var(--sp-2) 0;
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.hw-table td {
+  padding: var(--sp-2) var(--sp-3) var(--sp-2) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.hw-num {
+  text-align: right !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.hw-table-link {
+  cursor: pointer;
+}
+
+.hw-table-link:hover td {
+  background: var(--surface-hi);
+}
+
+/* --- worker hero ---------------------------------------------------------- */
+
+.hw-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: var(--sp-6);
+  padding-bottom: var(--sp-4);
+  border-bottom: 1px solid var(--line);
+}
+
+.hw-hero-id {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.hw-hero-name {
+  margin: var(--sp-1) 0 var(--sp-2);
+  font-family: var(--font-title);
+  font-weight: 600;
+  font-size: var(--fs-2xl);
+  letter-spacing: 0.06em;
+  line-height: 1.1;
+}
+
+.hw-hero-compact .hw-hero-name {
+  font-size: var(--fs-xl);
+  margin-bottom: 0;
+}
+
+.hw-hero-figures {
+  display: flex;
+  gap: var(--sp-6);
+}
+
+.hw-small-figure {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.hw-small-value {
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.hw-small-label {
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* --- tier ladder ---------------------------------------------------------- */
+
+.hw-ladder {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  position: relative;
+}
+
+.hw-rung {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  position: relative;
+}
+
+/* the line joining one node to the next */
+.hw-rung + .hw-rung::before {
+  content: "";
+  position: absolute;
+  top: 1.25rem;
+  right: 50%;
+  width: 100%;
+  height: 2px;
+  background: var(--line-strong);
+  z-index: 0;
+}
+
+.hw-rung.is-done + .hw-rung::before,
+.hw-rung.is-current + .hw-rung.is-next::before {
+  background: linear-gradient(90deg, var(--accent), var(--line-strong));
+}
+
+.hw-rung.is-done + .hw-rung.is-done::before,
+.hw-rung.is-done + .hw-rung.is-current::before {
+  background: var(--accent);
+}
+
+.hw-rung-node {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  border: 2px solid var(--line-strong);
+  background: var(--bg);
+  font-family: var(--font-title);
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.hw-rung.is-done .hw-rung-node {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.hw-rung.is-current .hw-rung-node {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+.hw-rung.is-next .hw-rung-node {
+  border-style: dashed;
+  border-color: var(--text-dim);
+  color: var(--text-dim);
+}
+
+.hw-rung-name {
+  margin-top: var(--sp-2);
+  font-family: var(--font-title);
+  font-weight: 600;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  font-size: var(--fs-sm);
+}
+
+.hw-rung.is-locked .hw-rung-name {
+  color: var(--muted);
+}
+
+.hw-rung.is-current .hw-rung-name {
+  color: var(--accent);
+}
+
+.hw-rung-req {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.hw-progress {
+  position: relative;
+  margin-top: var(--sp-5);
+  height: 1.25rem;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 1rem;
+  overflow: hidden;
+}
+
+.hw-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(90deg, var(--accent-fade), var(--accent));
+}
+
+.hw-progress-text {
+  position: relative;
+  display: block;
+  text-align: center;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  line-height: 1.15rem;
+  color: var(--text);
+}
+
+/* --- orders and buttons --------------------------------------------------- */
+
+.hw-button {
+  background: var(--surface-hi);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  padding: var(--sp-2) var(--sp-4);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.hw-button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.hw-button:focus-visible,
+.hw-tab:focus-visible,
+.hw-roster-row:focus-visible,
+.hw-node:focus-visible,
+.hw-mini-row:focus-visible,
+.hw-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.hw-button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.hw-button.is-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.hw-button.is-danger {
+  border-color: var(--bad-line);
+  color: var(--bad);
+}
+
+.hw-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+/* Fase 33 etapa 4 (D269): inside an order the button column is 9rem wide, so a row of
+   house buttons stacks instead of running over the hint beside it. */
+.hw-order .hw-button-row {
+  flex-direction: column;
+  flex-wrap: nowrap;
+}
+
+.hw-order .hw-button-row .hw-button {
+  width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.hw-button-wide {
+  width: 100%;
+  padding: var(--sp-3);
+  margin-top: var(--sp-4);
+}
+
+.hw-orders .hw-order + .hw-order {
+  margin-top: var(--sp-3);
+}
+
+.hw-order {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.hw-order-hint {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+.hw-confirm {
+  margin-top: var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--bad-line-soft);
+  border-radius: var(--radius);
+  background: var(--bad-soft);
+}
+
+.hw-confirm p {
+  margin: 0 0 var(--sp-2);
+}
+
+/* --- contracts (Fase 17 B, D172) ------------------------------------------ */
+
+.hw-columns-contracts {
+  grid-template-columns: 1.45fr 1fr;
+}
+
+.hw-bands {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  position: relative;
+}
+
+/* The trunk of the tree: one line down the band nodes. */
+.hw-bands::before {
+  content: "";
+  position: absolute;
+  left: 1rem;
+  top: 1rem;
+  bottom: 1rem;
+  width: 1px;
+  background: var(--line-strong);
+}
+
+.hw-band {
+  position: relative;
+}
+
+.hw-band + .hw-band {
+  margin-top: var(--sp-4);
+}
+
+.hw-band-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.hw-band-node {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--accent);
+  background: var(--node-bg);
+  font-family: var(--font-title);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.hw-band.is-locked .hw-band-node {
+  border-color: var(--line-strong);
+  color: var(--muted);
+}
+
+.hw-band-name {
+  font-family: var(--font-title);
+  font-weight: 600;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  font-size: var(--fs-sm);
+}
+
+.hw-band-state {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--good);
+}
+
+.hw-band.is-locked .hw-band-state {
+  color: var(--muted);
+}
+
+.hw-band-tasks {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: var(--sp-2);
+  margin: var(--sp-2) 0 0 2.75rem;
+}
+
+.hw-node {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  text-align: left;
+  background: var(--surface-hi);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--sp-2) var(--sp-3);
+  cursor: pointer;
+}
+
+.hw-node:hover {
+  border-color: var(--line-strong);
+}
+
+.hw-node.is-selected {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.hw-node.is-locked {
+  background: transparent;
+  border-style: dashed;
+}
+
+.hw-node.is-locked .hw-node-name {
+  color: var(--muted);
+}
+
+.hw-node:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.hw-node-name {
+  font-weight: 600;
+}
+
+.hw-node-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-1) var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+/* Fase 33 etapa 10 (F2): the duration never gives up its room to the tag, and the forecast
+   ("back in about 17 h") is its own line under the pair instead of a tail on the tag. */
+.hw-node-hours {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.hw-node-hint {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.hw-tag {
+  display: inline-block;
+  padding: 0 var(--sp-2);
+  border-radius: 1rem;
+  border: 1px solid currentColor;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1.35rem;
+  white-space: nowrap;
+}
+
+.hw-tag-open {
+  color: var(--good);
+}
+.hw-tag-held {
+  color: var(--bad);
+}
+.hw-tag-unknown {
+  color: var(--away);
+}
+.hw-tag-spent,
+.hw-tag-none {
+  color: var(--muted);
+}
+
+.hw-detail {
+  position: sticky;
+  top: 0;
+}
+
+.hw-detail-title {
+  margin: var(--sp-1) 0 var(--sp-2);
+  font-family: var(--font-title);
+  font-weight: 600;
+  font-size: var(--fs-xl);
+}
+
+.hw-source-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-4);
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+}
+
+.hw-detail-figures {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  margin-bottom: var(--sp-3);
+}
+
+.hw-figure-cell {
+  display: flex;
+  flex-direction: column;
+  padding: var(--sp-3) var(--sp-2);
+}
+
+.hw-figure-cell + .hw-figure-cell {
+  border-left: 1px solid var(--line);
+}
+
+.hw-figure-cell .hw-figure-value {
+  font-size: var(--fs-xl);
+}
+
+.hw-detail-line {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-sm);
+}
+
+.hw-detail-note {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
+
+.hw-why {
+  margin-top: var(--sp-4);
+  padding: var(--sp-3);
+  border-left: 3px solid var(--line-strong);
+  background: var(--tint);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+.hw-why p {
+  margin: 0;
+}
+
+.hw-view > .hw-why {
+  margin-top: 0;
+}
+
+/* --- the answer line (Fase 17 B, D171) ------------------------------------ */
+
+.hw-answer {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-left-width: 3px;
+  border-radius: var(--radius);
+  background: var(--surface-hi);
+}
+
+.hw-answer.is-ok {
+  border-color: var(--good);
+}
+.hw-answer.is-refused {
+  border-color: var(--bad);
+}
+.hw-answer.is-pending {
+  border-color: var(--away);
+}
+
+.hw-answer-mark {
+  width: 0.5rem;
+  height: 0.5rem;
+  flex: none;
+  border-radius: 50%;
+  background: var(--muted);
+}
+
+.hw-answer.is-ok .hw-answer-mark {
+  background: var(--good);
+}
+.hw-answer.is-refused .hw-answer-mark {
+  background: var(--bad);
+}
+.hw-answer.is-pending .hw-answer-mark {
+  background: var(--away);
+}
+
+.hw-answer-text {
+  flex: 1;
+}
+
+.hw-answer-close {
+  background: transparent;
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 0 var(--sp-2);
+}
+
+.hw-answer-close:hover,
+.hw-answer-close:focus-visible {
+  color: var(--text);
+}
+
+.hw-button.is-primary:disabled {
+  background: transparent;
+  border-color: var(--line-strong);
+  color: var(--muted);
+  opacity: 1;
+}
+
+/* --- recruit (Fase 17 B, D172) -------------------------------------------- */
+
+.hw-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: var(--sp-4);
+}
+
+.hw-candidate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+/* Fase 33 etapa 10: a candidate the rules stop (a second cook in the hold) stays on the list,
+   greyed, with the reason on the card. */
+.hw-candidate.is-blocked {
+  opacity: 0.55;
+  border-style: dashed;
+}
+
+.hw-candidate-block {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-xs);
+  color: var(--bad);
+}
+
+.hw-candidate-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-1);
+}
+
+.hw-candidate-name {
+  margin: 0;
+  font-family: var(--font-title);
+  font-weight: 600;
+  font-size: var(--fs-lg);
+}
+
+.hw-candidate-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: var(--sp-4);
+}
+
+.hw-price {
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* --- empty states --------------------------------------------------------- */
+
+.hw-empty {
+  padding: var(--sp-7) var(--sp-5);
+  text-align: center;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+}
+
+.hw-empty-title {
+  margin: 0 0 var(--sp-2);
+  font-family: var(--font-title);
+  font-weight: 600;
+  letter-spacing: var(--tracking-eyebrow);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+/* --- scrollbars (Ultralight follows the WebKit pseudo-elements) ----------- */
+
+::-webkit-scrollbar {
+  width: 0.5rem;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 0.25rem;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}

@@ -1,0 +1,32 @@
+# Source only. Build output is produced from it and is not committed by accident.
+
+# Papyrus output
+*.pex
+*.pex.tmp
+
+# Native build
+build/
+out/
+*.dll
+*.pdb
+*.lib
+*.exp
+*.ilk
+vcpkg_installed/
+.vs/
+CMakeSettings.json
+*.user
+
+# Panel
+node_modules/
+dist/
+
+# Plugin data - distributed in the release archive
+*.esp
+*.esl
+*.esm
+*.bsa
+
+# Editor and tool leftovers
+*.bak
+*.bak[0-9]*

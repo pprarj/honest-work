@@ -1,0 +1,28 @@
+# Fase 33 etapa 10 (F1, V073): what a contract costs the player, one vector per line. One sum for
+# the charge (WOSK_WorkerAliasScript.ContractCost), the log, and the panel's estimate
+# (ui-prisma model.contractCost): read by the Python reference tests (test_contract_cost.py) and
+# ui-prisma/tests/price-and-state.test.ts; the Papyrus side is held to the same numbers by the
+# harness items PRC40-PRC44 in HWTest_HonestWork.psc.
+#
+#   cost = ceil(units x (reference x multiplier + max(ingredients, 0)))     every step in float32
+#   ingredients -1 (an ingredient that does not resolve) counts 0
+#
+# The expected values were worked out apart from the code under test (plain arithmetic in the
+# comment), not produced by it.
+#
+#   units reference multiplier ingredients expected
+#
+# 4 x (2 x 1.9) = 15.2
+4 2 1.9 0 16
+# 5 x (6.528 x 1.4 + 5.44) = 72.896
+5 6.528 1.4 5.44 73
+# 2 x (77.6219 x 1.4 + 10.5) = 238.34
+2 77.6219 1.4 10.5 239
+# 10 x (1.65 x 1.9) = 31.35
+10 1.65 1.9 0 32
+# 3 x (5 x 2) = 30, an unresolved ingredient left out
+3 5 2 -1 30
+# an exact figure does not tip over a gold: 4 x 2.5 x 2 = 20
+4 2.5 2 0 20
+# 10 x 0.1 = 1, float32 keeps it at 1
+10 0.1 1 0 1

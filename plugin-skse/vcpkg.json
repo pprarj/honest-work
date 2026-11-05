@@ -1,0 +1,13 @@
+{
+    "name": "honestwork",
+    "version-string": "0.1.0",
+    "description": "Honest Work - Workers of Skyrim - operator panel SKSE plugin",
+    "builtin-baseline": "ee12231b20c95013c6638d845d04c91559a1d1ff",
+    "dependencies": [
+        "directxtk",
+        "nlohmann-json",
+        "rapidcsv",
+        "spdlog",
+        "toml11"
+    ]
+}

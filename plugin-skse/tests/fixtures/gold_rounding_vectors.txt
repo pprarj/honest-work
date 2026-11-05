@@ -1,0 +1,28 @@
+# Fase 33 etapa 11 (G1, D295): whole gold, one vector per line. There is no decimal in the game's
+# money, so a price is rounded UP to whole gold: max(1, ceil(x - 0.001)) for x > 0; 0 (no price)
+# and a negative (the -1 of an ingredient that does not resolve) pass through. The 0.001 keeps a
+# figure that is whole in exact arithmetic (float32 noise: 6.0000005) on the same side in Papyrus,
+# C++, Python and the panel. Read by the Python reference tests (test_dish_price.py), ui-prisma/tests/price-and-state.test.ts
+# and plugin-skse/tests/test_dish_price.cpp; the Papyrus side is held to the same numbers by the harness
+# items PRC50-PRC56 in HWTest_HonestWork.psc.
+#
+# The expected values were worked out apart from the code under test (plain arithmetic), not produced by it.
+#
+#   input expected
+#
+1.01 2
+2.0004 2
+2.002 3
+0.2 1
+0.0005 1
+7 7
+0 0
+-1 -1
+6.0000005 6
+1.65 2
+2.47 3
+5.44 6
+80.58 81
+10.5 11
+0.999 1
+1.0011 2

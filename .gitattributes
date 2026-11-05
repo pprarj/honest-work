@@ -1,0 +1,46 @@
+# Honest Work - line endings
+#
+# Without this file, a clone's working copy would depend on the cloning
+# machine's core.autocrlf setting instead of on the project's convention.
+# The index stores LF for all text; this file only fixes what lands in the
+# working copy, here and in every future clone.
+
+# Text in LF - documents, C++ source, scripts, configuration
+*.md              text eol=lf
+LICENSE           text eol=lf
+*.txt             text eol=lf
+*.json            text eol=lf
+*.py              text eol=lf
+*.toml            text eol=lf
+*.ini             text eol=lf
+*.h               text eol=lf
+*.cpp             text eol=lf
+*.in              text eol=lf
+*.ts              text eol=lf
+*.tsx             text eol=lf
+*.css             text eol=lf
+*.html            text eol=lf
+*.cmake           text eol=lf
+CMakeLists.txt    text eol=lf
+.gitignore        text eol=lf
+.gitattributes    text eol=lf
+.gitmodules       text eol=lf
+
+# Text in CRLF - a tool requirement, not a preference: the Papyrus compiler
+# and cmd.exe read these.
+*.psc             text eol=crlf
+*.bat             text eol=crlf
+
+# Binary - never convert, never diff as text
+*.esp             binary
+*.esm             binary
+*.esl             binary
+*.pex             binary
+*.seq             binary
+*.bsa             binary
+*.fuz             binary
+*.png             binary
+
+# Third-party licence texts are kept byte for byte
+plugin-skse/extern/PrismaUI/LICENSE.md -text
+plugin-skse/extern/SKSEMenuFramework/LICENSE -text
