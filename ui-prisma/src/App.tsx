@@ -7,12 +7,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   HW_HISTORY_EVENT,
+  HW_FOLLOWERS_EVENT,
   HW_INIT_EVENT,
   HW_OUTCOME_EVENT,
   HW_RECRUIT_EVENT,
   HW_SOURCES_EVENT,
   HW_WORKERS_EVENT,
   HostBridge,
+  type HwFollowersPayload,
   type HwHistoryPayload,
   type HwInitPayload,
   type HwOutcome,
@@ -30,7 +32,7 @@ import { RecruitView } from "./views/RecruitView";
 import { initialTabFor, parseGear, parseHouse, wordOutcome, withoutHiding, type GearInfo, type HouseInfo } from "./model";
 
 // Fase 17 (D167): full-screen panel - workers in a fixed left column, tabs on
-// top. The page draws and captures clicks; every rule stays in Papyrus (SPEC 8).
+// top. The page draws and captures clicks; every rule stays in Papyrus.
 export type Tab = "overview" | "worker" | "contracts" | "recruit";
 
 const TAB_LABELS: Record<Tab, string> = {
@@ -54,7 +56,7 @@ export interface Answer {
 // Gives the views one way to send an order: the request and the line together.
 export type SendOrder = (text: string, request: () => void) => void;
 
-const ANSWER_WAIT_MS = 4000;
+const ANSWER_WAIT_MS = 12000;
 
 function useHostEvent<T>(name: string, onDetail: (detail: T) => void): void {
   useEffect(() => {
@@ -78,6 +80,7 @@ export default function App() {
   const [recruit, setRecruit] = useState<HwRecruitPayload | null>(null);
   // Fase 32 (D254): the spots whose Hire is in flight, off the list until Papyrus answers.
   const [hiding, setHiding] = useState<ReadonlySet<number>>(new Set());
+  const [followers, setFollowers] = useState<HwFollowersPayload | null>(null);
   const [workers, setWorkers] = useState<HwWorkerRow[] | null>(null);
   const [sources, setSources] = useState<HwSourcesPayload | null>(null);
   const [history, setHistory] = useState<HwHistoryPayload | null>(null);
@@ -109,6 +112,15 @@ export default function App() {
       if (start.slot !== null) setSelected(start.slot);
       // The answer of the last visit belongs to the last visit.
       setAnswer(null);
+    }
+  });
+  // Fase 34 etapa 2 (D299): the "Your followers" section. Its message is the answer to a
+  // follower hire; it is shown on the answer line like a recruit message.
+  useHostEvent<HwFollowersPayload | null>(HW_FOLLOWERS_EVENT, (d) => {
+    setFollowers(d);
+    if (d && d.message) {
+      answerId.current += 1;
+      setAnswer({ id: answerId.current, kind: "info", text: d.message });
     }
   });
   useHostEvent<HwSourcesPayload | null>(HW_SOURCES_EVENT, setSources);
@@ -325,9 +337,9 @@ export default function App() {
               />
             )}
             {config && tab === "contracts" && (
-              <ContractsView config={config} worker={worker} sources={sources} sendOrder={sendOrder} />
+              <ContractsView config={config} worker={worker} sources={sources} sendOrder={sendOrder} followers={followers} />
             )}
-            {config && tab === "recruit" && recruit && <RecruitView recruit={withoutHiding(recruit, hiding)} house={houses[-1]} onHire={hideCandidate} employed={workers ? workers.length : recruit.hired} sendOrder={sendOrder} />}
+            {config && tab === "recruit" && recruit && <RecruitView recruit={withoutHiding(recruit, hiding)} followers={followers} house={houses[-1]} onHire={hideCandidate} employed={workers ? workers.length : recruit.hired} sendOrder={sendOrder} />}
           </main>
         </div>
       </div>

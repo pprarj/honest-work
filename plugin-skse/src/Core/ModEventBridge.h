@@ -31,6 +31,10 @@ namespace HonestWork::Core::ModEventBridge
 	inline constexpr auto kEventFire = "WOSK_RequestFire";
 	inline constexpr auto kEventPickUp = "WOSK_RequestPickUp";
 	inline constexpr auto kEventHire = "WOSK_RequestHire";  // D104 etapa 3, numArg = candidate spot
+	// Fase 34 etapa 2 (D299): hire a follower of the player, numArg = row of the list, strArg = trade id
+	inline constexpr auto kEventHireFollower = "WOSK_RequestHireFollower";
+	// Fase 35 etapa 4: assign a follower of the player as a bodyguard, numArg = row of the same list
+	inline constexpr auto kEventAssignGuard = "WOSK_RequestAssignGuard";
 	// Fase 9, D137: same as kEventIssueContract but the player already confirmed
 	// the occupied warning in the panel. The Papyrus side draws from the
 	// occupied pool and charges the incident config (0.50, clamped 0.01-0.60).

@@ -68,6 +68,25 @@ Int Function RequestHireFromPool(Int aiSpot) global
     return GetController().HireFromPool(aiSpot)
 EndFunction
 
+; Fase 34 etapa 2 (D299): the Recruit tab's follower section.
+Function RequestHireFollower(Int aiIndex, string asProfession) global
+    GetController().HireFollowerFromPanel(aiIndex, asProfession)
+EndFunction
+
+; Fase 35 etapa 8 (V100): the follower list again when a guard goes on or off an escort. Silent
+; about failure, like PushPanelState.
+Function PushGuardState() global
+    WOSK_ControllerScript c = GetController()
+    if c
+        c.RefreshGuardState()
+    endIf
+EndFunction
+
+; Fase 35 etapa 4 (D313, B9): the Recruit tab's Bodyguards section, button Assign.
+Function RequestAssignGuard(Int aiIndex) global
+    GetController().AssignGuardFromPanel(aiIndex)
+EndFunction
+
 Bool Function RequestIssueContract(Int aiAliasIndex, string asTaskId) global
     return GetController().RequestContract(aiAliasIndex, asTaskId, false)
 EndFunction

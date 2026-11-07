@@ -1083,6 +1083,12 @@ namespace HonestWork::Core::ProfessionsRegistry
 		return TaskIngredientCostLocked(a_profession, TaskIndexById(a_profession, a_taskId), a_taskId);
 	}
 
+	float OutcomeRowFloat(std::string_view a_contractType, std::int32_t a_row, std::string_view a_field, float a_default)
+	{
+		std::shared_lock lock(g_registryLock);
+		return AsFloat(Child(Element(OutcomeRows(a_contractType), a_row), a_field), a_default);
+	}
+
 	std::int32_t CountHoldSources(std::string_view a_hold, std::string_view a_resourceType)
 	{
 		std::shared_lock lock(g_registryLock);

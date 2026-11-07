@@ -85,7 +85,11 @@ Function _Outcome(string asAction, string asCode, string asArg = "", Int aiNumbe
     WOSK_PanelBridgeScript.ReportOutcome(asAction, GetID(), asCode, asArg, aiNumber)
 EndFunction
 
-Bool Function IssueContract(string asTaskId, string asSourceId = "", Bool abConfirmOccupied = false)
+; Fase 35 etapa 4 (D313, B5): abGuard = the player said yes to a bodyguard. A free guard
+; assigned before is attached; the fee of the contract is added to what is charged and is its
+; own line in the statement; the death slice of the table is a fifth. No free guard, or the
+; cook (Q6): refused before any gold changes hands.
+Bool Function IssueContract(string asTaskId, string asSourceId = "", Bool abConfirmOccupied = false, Bool abGuard = false)
     Actor worker = GetActorRef()
     if !worker
         Debug.Trace("WOSK_WorkerAlias: IssueContract(" + asTaskId + ") failed - alias is empty")
@@ -221,6 +225,33 @@ Bool Function IssueContract(string asTaskId, string asSourceId = "", Bool abConf
         _Outcome("issue", "NO_DESTINATION")
         return false
     endIf
+    ; Fase 35 etapa 10 (D319): the firewood is cut at the nearest chopping block; the source above
+    ; stays (veins, price), only the place changes. No block: the sawmill of the source, as before.
+    Bool atStump = false
+    Float stumpDist = 0.0
+    Bool stumpOn = WOSK_Stump.Enabled()
+    if WOSK_Guards.TaskHasNoEscort(asTaskId)
+        Debug.Trace("WOSK_WorkerAlias: STUMP-CHAVE task=" + asTaskId + " stumpenabled=" + (stumpOn as Int) + " (0 = fixed hours by the clock, no block)")
+    endIf
+    if stumpOn && WOSK_Guards.TaskHasNoEscort(asTaskId)
+        ; Fase 35 etapa 11 (D320): the nearest block from the OUTSIDE of the house, by data; the
+        ; engine search (loaded cells around the home or the worker) only when the house has no anchor.
+        ObjectReference stumpRef = WOSK_Stump.Pick(worker, _HomeTarget(worker))
+        if stumpRef
+            stumpDist = StorageUtil.GetFloatValue(worker, "WOSK_StumpDist", 0.0)
+        else
+            stumpRef = WOSK_Stump.Nearest(worker, _HomeTarget(worker))
+        endIf
+        if stumpRef
+            ; Fase 35 etapa 12 (D321): no door anchor -> the real position decides, never the thirds.
+            stumpDist = WOSK_Stump.DistanceFor(worker, _HomeTarget(worker), stumpRef, stumpDist)
+            Debug.Trace("WOSK_WorkerAlias: STUMP-ESCOLHIDO task=" + asTaskId + " block=" + stumpRef + " distHouseDoor=" + (stumpDist as Int) + " sawmill=" + destination)
+            destination = stumpRef
+            atStump = true
+        else
+            Debug.Trace("WOSK_WorkerAlias: STUMP-SEM-CEPO task=" + asTaskId + " no chopping block reachable - the sawmill of the source stands: " + destination)
+        endIf
+    endIf
 
     Float batchMin = WOSK_Registry.GetTaskFloat(profession, taskIndex, "batchMin", 0.0)
     Float batchMax = WOSK_Registry.GetTaskFloat(profession, taskIndex, "batchMax", 0.0)
@@ -247,7 +278,7 @@ Bool Function IssueContract(string asTaskId, string asSourceId = "", Bool abConf
     ; output (SourceUnitsPerSlot 1.0) and the same arithmetic reserves units.
     Float unitsPerVein = WOSK_DepletionScript.SourceUnitsPerSlot(MVP_HOLD, sourceId, profession, taskIndex)
     Float yieldMultiplier = WOSK_Registry.GetTierFloat(profession, tier, "yieldMultiplier", 1.0)
-    ; Fase 15, SPEC 5.7: the hunter's bow multiplies the batch. Read once, here,
+    ; Fase 15: the hunter's bow multiplies the batch. Read once, here,
     ; and stored with the contract (WOSK_ContractGear); the settlement reads the
     ; stored value, never the inventory. The cost below does not move.
     ; Fase 30 (D242): what the hunter owns goes on before it is read (a bow he could not
@@ -268,35 +299,72 @@ Bool Function IssueContract(string asTaskId, string asSourceId = "", Bool abConf
     Debug.Trace("WOSK_WorkerAlias: IssueContract cost " + costGold + " gold = ceil(" + expectedUnits + " unit(s) x (reference " + basePricePerUnit + \
                 " x multiplier " + priceMultiplier + " + ingredients " + ingredientCost + ")) task=" + asTaskId + " tier=" + tier)
 
+    ; Fase 35 etapa 4 (D313, B2, B5, Q6): the guard and his fee, decided before the gold moves.
+    Actor guard = None
+    Int guardFee = 0
+    if abGuard
+        if profession == "cook"
+            Debug.Trace("WOSK_WorkerAlias: IssueContract refused, the cook has no escort (task=" + asTaskId + ")")
+            _Outcome("issue", "NO_GUARD", "COOK")
+            return false
+        endIf
+        ; Fase 35 etapa 10 (D319): by contract, not only by profession.
+        if WOSK_Guards.TaskHasNoEscort(asTaskId)
+            Debug.Trace("WOSK_WorkerAlias: IssueContract refused, the contract has no escort (task=" + asTaskId + ")")
+            Debug.Notification("Honest Work: firewood is cut in town, no bodyguard needed.")
+            _Outcome("issue", "NO_GUARD", "CONTRACT")
+            return false
+        endIf
+        guard = WOSK_Guards.FreeGuard()
+        if !guard
+            Debug.Trace("WOSK_WorkerAlias: IssueContract refused, no free bodyguard (task=" + asTaskId + ")")
+            Debug.Notification("Honest Work: you have no free bodyguard.")
+            _Outcome("issue", "NO_GUARD", "FREE")
+            return false
+        endIf
+        guardFee = WOSK_Guards.ContractFee(costGold)
+        Debug.Trace("WOSK_WorkerAlias: IssueContract bodyguard " + guard + " fee " + guardFee + " gold (contract " + costGold + ")")
+    endIf
+    Int totalGold = costGold + guardFee
+
     Actor player = Game.GetPlayer()
     Form goldForm = Game.GetFormFromFile(0x0000000F, "Skyrim.esm")
-    if player.GetItemCount(goldForm) < costGold
+    if player.GetItemCount(goldForm) < totalGold
         Debug.Trace("WOSK_WorkerAlias: IssueContract refused, player has " + player.GetItemCount(goldForm) + \
-                     " gold, needs " + costGold)
-        _Outcome("issue", "GOLD", "" + player.GetItemCount(goldForm), costGold)
+                     " gold, needs " + totalGold)
+        _Outcome("issue", "GOLD", "" + player.GetItemCount(goldForm), totalGold)
         return false
     endIf
-    player.RemoveItem(goldForm, costGold)
+    player.RemoveItem(goldForm, totalGold)
     ; Fase 28 conserto 1 (D238, V060): the cook does not set out, he cooks at home;
     ; "on the way" is never said of him.
     if profession == "cook"
         Debug.Notification("Honest Work: contract issued for " + costGold + " gold. " + worker.GetDisplayName() + " is preparing the meal.")
+    elseIf guard
+        Debug.Notification("Honest Work: contract issued for " + costGold + " gold, plus " + guardFee + " for " + guard.GetDisplayName() + " as bodyguard.")
     else
         Debug.Notification("Honest Work: contract issued for " + costGold + " gold.")
     endIf
     ; Fase 17 (D168): the panel's gold-spent counter and statement line.
     WOSK_LedgerScript.RecordIssued(worker, asTaskId, costGold)
+    if guard
+        ; B6: the fee is its own line, apart from the cost of the contract.
+        WOSK_LedgerScript.RecordGuardFee(worker, guard, asTaskId, guardFee)
+    endIf
     if occupiedGamble
-        _Outcome("issue", "ISSUED", "OCCUPIED", costGold)
+        _Outcome("issue", "ISSUED", "OCCUPIED", totalGold)
     elseIf profession == "cook"
-        _Outcome("issue", "ISSUED", "COOK", costGold)
+        _Outcome("issue", "ISSUED", "COOK", totalGold)
+    elseIf guard
+        _Outcome("issue", "ISSUED", "GUARD", totalGold)
     else
-        _Outcome("issue", "ISSUED", "", costGold)
+        _Outcome("issue", "ISSUED", "", totalGold)
     endIf
 
     StorageUtil.SetStringValue(worker, "WOSK_TaskId", asTaskId)
     StorageUtil.SetStringValue(worker, "WOSK_ContractSource", sourceId)
     StorageUtil.SetFormValue(worker, "WOSK_ContractDestination", destination)
+    StorageUtil.SetIntValue(worker, "WOSK_ContractStump", atStump as Int)
     StorageUtil.SetStringValue(worker, "WOSK_ContractResourceType", resourceType)
     StorageUtil.SetIntValue(worker, "WOSK_ContractVeins", reservedVeins)
     StorageUtil.SetFloatValue(worker, "WOSK_ContractGear", gearMultiplier)
@@ -348,12 +416,18 @@ Bool Function IssueContract(string asTaskId, string asSourceId = "", Bool abConf
         endIf
     endIf
 
+    ; Fase 35 etapa 10 (D319): the block is in town; no incident there (reversible by the maintainer).
+    if atStump
+        chanceFinal = 0.0
+    endIf
     Float roll = Utility.RandomFloat(0.0, 1.0)
     string outcome = OUTCOME_SUCCESS
     if roll <= chanceFinal
         string contractType = WOSK_Registry.GetTaskString(profession, taskIndex, "contractType", "collection")
         Float roll2 = Utility.RandomFloat(0.0, 1.0)
-        outcome = _ResolveOutcome(contractType, roll2)
+        ; Fase 35 etapa 4 (B4, B7): with a guard the table is the guarded one, a fifth of the
+        ; death slice (data); the chance of an incident above is untouched, occupied or not.
+        outcome = _ResolveOutcome(WOSK_Guards.OutcomeTableFor(contractType, guard != None), roll2)
     endIf
     StorageUtil.SetStringValue(worker, "WOSK_IncidentOutcome", outcome)
 
@@ -365,6 +439,21 @@ Bool Function IssueContract(string asTaskId, string asSourceId = "", Bool abConf
     endIf
     ; Fase 33 etapa 6 (D277, V069 A3): whole hours, the same sum the panel shows.
     Float finalHours = WholeHours(taskHours, durationMultiplier)
+    ; Fase 35 etapa 11 (D320): firewood = the way out + one working hour (x the tier multiplier) + the
+    ; way back, the legs from the distance to the block; not rounded to whole hours. Other tasks: as before.
+    StorageUtil.UnsetFloatValue(worker, "WOSK_StumpLegOut")
+    StorageUtil.UnsetFloatValue(worker, "WOSK_StumpWork")
+    StorageUtil.UnsetIntValue(worker, "WOSK_StumpWait")
+    StorageUtil.UnsetIntValue(worker, "WOSK_StumpHomeWalk")
+    if atStump && stumpDist > 0.0
+        Float legH = WOSK_Stump.LegHours(stumpDist)
+        Float workH = WOSK_Stump.Param("workhours", 1.0) * durationMultiplier
+        finalHours = legH * 2.0 + workH
+        StorageUtil.SetFloatValue(worker, "WOSK_StumpLegOut", legH)
+        StorageUtil.SetFloatValue(worker, "WOSK_StumpWork", workH)
+        Debug.Trace("WOSK_WorkerAlias: STUMP-PERNAS dist=" + (stumpDist as Int) + " speed=" + WOSK_Stump.Param("walkunitspersecond", 150.0) + " legOut=" + legH + " work=" + workH + " legBack=" + legH + " total=" + finalHours + " h")
+        Debug.Notification("Honest Work: the block is about " + (stumpDist as Int) + " units away - the firewood takes about " + Math.Ceiling(finalHours * 60.0) + " min of game time.")
+    endIf
     if outcome != OUTCOME_SUCCESS
         Float timingRoll = Utility.RandomFloat(0.0, 1.0)
         Float momentoIncidente = (0.2 + timingRoll * 0.6) * finalHours
@@ -391,12 +480,19 @@ Bool Function IssueContract(string asTaskId, string asSourceId = "", Bool abConf
         ; D223: the home sandbox off first - same priority as the travel package.
         WOSK_PlayerHouse.LeaveHome(worker)
         ActorUtil.AddPackageOverride(worker, _TravelPackage(), 30, 0)
+        if guard
+            ; Fase 35 etapa 4 (D313): he walks with the worker out, at work and back.
+            WOSK_Guards.Attach(worker, guard)
+        endIf
         ; Fase 32 (D253): "Traveling out" waits for the worker to leave the cell of
         ; the order. The cell is stored and compared in real time (see OnUpdate).
         StorageUtil.SetIntValue(worker, "WOSK_Departed", 0)
         StorageUtil.SetFormValue(worker, "WOSK_IssueCell", worker.GetParentCell())
         StorageUtil.SetFloatValue(worker, "WOSK_IssueRealTime", Utility.GetCurrentRealTime())
         StorageUtil.SetIntValue(worker, "WOSK_DepartProbeN", 0)
+        ; Fase 35 etapa 14 (D323): the guaranteed way out starts from zero at every issue.
+        StorageUtil.SetIntValue(worker, "WOSK_ExitStep", 0)
+        StorageUtil.UnsetFormValue(worker, "WOSK_ExitDoor")
         RegisterForSingleUpdate(2.0)
     endIf
     _TracePosition(worker, "contract issued")
@@ -439,6 +535,21 @@ Event OnUpdate()
     if StorageUtil.GetIntValue(worker, "WOSK_HomeRecheck", 0) == 1
         StorageUtil.UnsetIntValue(worker, "WOSK_HomeRecheck")
         EnsureAtHome("recheck")
+    endIf
+    ; Fase 35 etapa 11 (D320): the firewood worker walking to the block in sight, and the one walking home in sight.
+    if StorageUtil.GetIntValue(worker, "WOSK_StumpWait", 0) == 1
+        _StumpWaitTick(worker)
+    endIf
+    if StorageUtil.GetIntValue(worker, "WOSK_StumpHomeWalk", 0) == 1
+        _StumpHomeTick(worker)
+    endIf
+    ; Fase 35 etapa 4 (D313): the bodyguard of the contract is looked at every ~6 s; the probes
+    ; below arm a shorter update of their own while they run, which wins.
+    if WOSK_Guards.GuardOf(worker)
+        WOSK_Guards.Tick(worker)
+        if WOSK_Guards.GuardOf(worker)
+            RegisterForSingleUpdate(6.0)
+        endIf
     endIf
     if _WorkerProfession(worker) != "cook"
         WOSK_Outfits.Guard(worker, "OnUpdate")
@@ -492,6 +603,7 @@ Function _DepartureProbe(Actor akWorker)
         Debug.Trace("WOSK_WorkerAlias: " + akWorker + " still in the issue cell after " + secs + " s, probe " + n + \
                     " package=" + akWorker.GetCurrentPackage() + " " + _WhereString(akWorker))
     endIf
+    _ExitStep(akWorker, secs)
     if n >= 150
         _MarkDeparted(akWorker, "gave up polling after " + secs + " s in the issue cell")
         return
@@ -543,8 +655,120 @@ Function _MarkDeparted(Actor akWorker, string asWhy)
         return
     endIf
     StorageUtil.SetIntValue(akWorker, "WOSK_Departed", 1)
-    Debug.Trace("WOSK_WorkerAlias: " + akWorker + " departed: " + asWhy)
+    Debug.Trace("WOSK_WorkerAlias: " + akWorker + " departed: " + asWhy + " exitStep=" + StorageUtil.GetIntValue(akWorker, "WOSK_ExitStep", 0))
+    _RestoreExitTarget(akWorker)
     WOSK_PanelBridgeScript.PushPanelState()
+EndFunction
+
+; Fase 35 etapa 14 (D323, V111): the worker who stays in the issue cell is helped out in steps, each
+; one logged (SAIDA-n): 1) the package is evaluated again; 2) the travel target becomes the exit
+; door of the cell (a load door whose other side is outdoors) and he walks to it; 3) at the door,
+; or when the time is up, he is put on the other side of the door (out of sight; in sight only
+; after the longer wait). Then the target goes back to the real destination and the travel
+; package carries him. Not arriving is accepted: the leg ends by the clock as before.
+Function _ExitStep(Actor akWorker, Float afSecs)
+    Int step = StorageUtil.GetIntValue(akWorker, "WOSK_ExitStep", 0)
+    if step >= 3
+        return
+    endIf
+    Bool seen = WOSK_Guards.Seen(akWorker)
+    if step == 0
+        if afSecs < 8.0
+            return
+        endIf
+        akWorker.EvaluatePackage()
+        StorageUtil.SetIntValue(akWorker, "WOSK_ExitStep", 1)
+        Debug.Trace("WOSK_WorkerAlias: SAIDA-1 " + akWorker + " still in the issue cell after " + afSecs + " s - package evaluated again, package=" + akWorker.GetCurrentPackage())
+        return
+    endIf
+    if step == 1
+        if afSecs < 16.0
+            return
+        endIf
+        ObjectReference doorRef = _FindExitDoor(akWorker)
+        StorageUtil.SetIntValue(akWorker, "WOSK_ExitStep", 2)
+        if doorRef
+            StorageUtil.SetFormValue(akWorker, "WOSK_ExitDoor", doorRef)
+            _SetTravelTarget(akWorker, doorRef)
+            akWorker.EvaluatePackage()
+            Debug.Trace("WOSK_WorkerAlias: SAIDA-2 " + akWorker + " after " + afSecs + " s - walking to the exit door " + doorRef + " dist=" + _DistText(akWorker, doorRef))
+        else
+            Debug.Trace("WOSK_WorkerAlias: SAIDA-2 " + akWorker + " after " + afSecs + " s - no exit door found in the cell, the put-out step stands")
+        endIf
+        return
+    endIf
+    ; step 2: at the door -> through it; unseen and past 45 s -> through it; past 90 s -> through it.
+    ObjectReference exitDoor = StorageUtil.GetFormValue(akWorker, "WOSK_ExitDoor", None) as ObjectReference
+    Bool atDoor = exitDoor && _SameSpace(akWorker, exitDoor) && akWorker.GetDistance(exitDoor) < 220.0
+    Bool timeUp = (afSecs >= 45.0 && !seen) || afSecs >= 90.0 || !akWorker.Is3DLoaded()
+    if !atDoor && !timeUp
+        return
+    endIf
+    StorageUtil.SetIntValue(akWorker, "WOSK_ExitStep", 3)
+    ObjectReference outside = None
+    if exitDoor
+        outside = PO3_SKSEFunctions.GetDoorDestination(exitDoor)
+    endIf
+    string why = "time up (seen=" + seen as Int + ")"
+    if atDoor
+        why = "at the door"
+    endIf
+    if outside
+        akWorker.MoveTo(outside)
+        Debug.Trace("WOSK_WorkerAlias: SAIDA-3 " + akWorker + " after " + afSecs + " s, " + why + " - put on the other side of " + exitDoor + " -> " + outside)
+    else
+        ObjectReference dest = StorageUtil.GetFormValue(akWorker, "WOSK_ContractDestination", None) as ObjectReference
+        if dest
+            akWorker.MoveTo(dest)
+        endIf
+        Debug.Trace("WOSK_WorkerAlias: SAIDA-3 " + akWorker + " after " + afSecs + " s, " + why + " - no door on the other side, put at the destination " + dest)
+    endIf
+    _RestoreExitTarget(akWorker)
+EndFunction
+
+; The target of the travel package goes back to the contract destination after the door step.
+Function _RestoreExitTarget(Actor akWorker)
+    if !StorageUtil.GetFormValue(akWorker, "WOSK_ExitDoor", None)
+        return
+    endIf
+    StorageUtil.UnsetFormValue(akWorker, "WOSK_ExitDoor")
+    ObjectReference dest = StorageUtil.GetFormValue(akWorker, "WOSK_ContractDestination", None) as ObjectReference
+    if dest
+        _SetTravelTarget(akWorker, dest)
+        akWorker.EvaluatePackage()
+    endIf
+EndFunction
+
+; The nearest load door around the worker whose other side is outdoors (a trap door to a cellar has
+; an interior on the other side and is skipped); a door whose other side is not known comes second.
+ObjectReference Function _FindExitDoor(Actor akWorker)
+    ObjectReference[] doors = PO3_SKSEFunctions.FindAllReferencesOfFormType(akWorker, 29, 4000.0)
+    ObjectReference best = None
+    Float bestD = 0.0
+    Bool bestOutdoors = false
+    Int i = 0
+    while i < doors.Length
+        ObjectReference d = doors[i]
+        if d && PO3_SKSEFunctions.IsLoadDoor(d)
+            ObjectReference other = PO3_SKSEFunctions.GetDoorDestination(d)
+            if other
+                Cell otherCell = other.GetParentCell()
+                Bool outdoors = otherCell && !otherCell.IsInterior()
+                Bool unknown = !otherCell
+                if outdoors || unknown
+                    Float dist = akWorker.GetDistance(d)
+                    if !best || (outdoors && !bestOutdoors) || (outdoors == bestOutdoors && dist < bestD)
+                        best = d
+                        bestD = dist
+                        bestOutdoors = outdoors
+                    endIf
+                endIf
+            endIf
+        endIf
+        i += 1
+    endWhile
+    Debug.Trace("WOSK_WorkerAlias: SAIDA-PORTA " + akWorker + " doors around=" + doors.Length + " chosen=" + best + " dist=" + bestD as Int + " outdoors=" + bestOutdoors as Int)
+    return best
 EndFunction
 
 ; Fase 30 (D245): the hunter who loads while he is working (the player walked up to
@@ -649,7 +873,8 @@ EndEvent
 ; unknown elapsed time honestly supports.
 Function _RunContractLegs(Actor akWorker, string asContract)
     Float taskHours = _ContractTaskHours(akWorker)
-    Float legHours = taskHours / 3.0
+    Float legHours = _LegOutHours(akWorker)
+    Float workEnd = _WorkEndHours(akWorker)
     Float elapsed = _ContractElapsedHours(akWorker)
     Bool timed = (elapsed >= 0.0)
 
@@ -666,7 +891,7 @@ Function _RunContractLegs(Actor akWorker, string asContract)
             endIf
 
         elseIf contract == CONTRACT_WORKING
-            if !timed || elapsed >= legHours * 2.0
+            if !timed || elapsed >= workEnd
                 _EnterTravelingBack(akWorker)
                 contract = CONTRACT_TRAVELING_BACK
                 advancing = timed
@@ -676,6 +901,16 @@ Function _RunContractLegs(Actor akWorker, string asContract)
             if !timed || elapsed >= taskHours
                 if _WorkerProfession(akWorker) == "cook"
                     WOSK_PlayerHouse.ProbeCooking(akWorker, "leg end")
+                endIf
+                ; Fase 35 etapa 11 (D320): a firewood worker the player is looking at is not moved home;
+                ; he keeps walking (the travel package stays) and _ReturnHomeCore moves him once he is out of sight.
+                if StorageUtil.GetIntValue(akWorker, "WOSK_ContractStump", 0) == 1 && _WorkerProfession(akWorker) != "cook" && WOSK_Guards.Seen(akWorker)
+                    ; Fase 35 etapa 12 (D321, V107 item 6): the contract is NOT closed by the clock while he
+                    ; is still walking in sight; _StumpHomeTick closes it on his arrival (or out of sight).
+                    StorageUtil.SetIntValue(akWorker, "WOSK_StumpHomeWalk", 1)
+                    Debug.Trace("WOSK_WorkerAlias: STUMP-VOLTA-A-PE " + akWorker + " seen (" + WOSK_Guards.SeenText(akWorker) + ") - clock estimate reached, not closed: he keeps walking " + _WhereString(akWorker))
+                    RegisterForSingleUpdate(1.0)
+                    return
                 endIf
                 ActorUtil.RemovePackageOverride(akWorker, _TravelPackage())
                 WOSK_PlayerHouse.StopCooking(akWorker)
@@ -701,8 +936,109 @@ Function _EnterWorking(Actor akWorker)
         WOSK_PlayerHouse.ProbeCooking(akWorker, "leg working")
         return
     endIf
+    ObjectReference block = None
+    if StorageUtil.GetIntValue(akWorker, "WOSK_ContractStump", 0) == 1
+        block = StorageUtil.GetFormValue(akWorker, "WOSK_ContractDestination", None) as ObjectReference
+    endIf
+    if !block
+        ActorUtil.RemovePackageOverride(akWorker, _TravelPackage())
+        ActorUtil.AddPackageOverride(akWorker, _SandboxPackage(), 30, 0)
+        return
+    endIf
+    ; Fase 35 etapa 10 (D319): at the block he cuts the wood. Not seen and still far: put at the block.
+    ; Fase 35 etapa 12 (D321): the cut is a package (WOSK_Stump.Use); the travel package stays on until
+    ; he is at the block, so a worker walking in sight keeps walking; no sandbox on this leg.
+    if block
+        if block
+            ; Fase 35 etapa 11 (D320): not there yet and out of sight (other world included): put at
+            ; the block. Not there yet and in sight: he keeps walking, the work starts when he arrives.
+            Bool same = _SameSpace(akWorker, block)
+            Bool far = !same || akWorker.GetDistance(block) > 400.0
+            Bool seen = WOSK_Guards.Seen(akWorker)
+            Debug.Trace("WOSK_WorkerAlias: STUMP-CHEGADA " + akWorker + " far=" + far as Int + " sameSpace=" + same as Int + " " + WOSK_Guards.SeenText(akWorker) + " realSecondsSinceIssue=" + (Utility.GetCurrentRealTime() - StorageUtil.GetFloatValue(akWorker, "WOSK_IssueRealTime", 0.0)) + " dist=" + _DistText(akWorker, block))
+            if far && seen
+                StorageUtil.SetIntValue(akWorker, "WOSK_StumpWait", 1)
+                StorageUtil.SetFloatValue(akWorker, "WOSK_StumpWaitFrom", Utility.GetCurrentRealTime())
+                RegisterForSingleUpdate(5.0)
+                Debug.Trace("WOSK_WorkerAlias: STUMP-ESPERA " + akWorker + " in sight and still walking - the work starts when he arrives")
+                return
+            endIf
+            if far
+                akWorker.MoveTo(block)
+                Debug.Trace("WOSK_WorkerAlias: STUMP-POSTO " + akWorker + " not in sight and not there yet - put at the block " + block)
+            endIf
+            _StartCutting(akWorker, block)
+        endIf
+    endIf
+EndFunction
+
+; Fase 35 etapa 12 (D321): the travel package goes off and the chop package takes him to the block.
+Function _StartCutting(Actor akWorker, ObjectReference akBlock)
     ActorUtil.RemovePackageOverride(akWorker, _TravelPackage())
-    ActorUtil.AddPackageOverride(akWorker, _SandboxPackage(), 30, 0)
+    WOSK_Stump.Use(akWorker, akBlock)
+EndFunction
+
+; Distance to a reference, or "other space" when it means nothing.
+string Function _DistText(ObjectReference akA, ObjectReference akB)
+    if _SameSpace(akA, akB)
+        return "" + (akA.GetDistance(akB) as Int)
+    endIf
+    return "other space"
+EndFunction
+
+; Fase 35 etapa 12 (D321): the firewood worker walking home in the player's sight. Every 5 s: at home ->
+; the contract closes (STUMP-FIM, with the delay over the estimate); out of sight -> the travel package
+; goes off and the contract closes, which moves him home (never moved in sight).
+Function _StumpHomeTick(Actor akWorker)
+    if StorageUtil.GetStringValue(akWorker, "WOSK_Contract", CONTRACT_IDLE) != CONTRACT_TRAVELING_BACK
+        StorageUtil.UnsetIntValue(akWorker, "WOSK_StumpHomeWalk")
+        return
+    endIf
+    Float late = _ContractElapsedHours(akWorker) - _ContractTaskHours(akWorker)
+    if _IsAtHome(akWorker)
+        StorageUtil.UnsetIntValue(akWorker, "WOSK_StumpHomeWalk")
+        Debug.Trace("WOSK_WorkerAlias: STUMP-FIM " + akWorker + " arrived home on foot, " + late + " h after the estimate " + _WhereString(akWorker))
+        _ArrivedHome(akWorker, 0)
+        return
+    endIf
+    if !WOSK_Guards.Seen(akWorker)
+        StorageUtil.UnsetIntValue(akWorker, "WOSK_StumpHomeWalk")
+        ActorUtil.RemovePackageOverride(akWorker, _TravelPackage())
+        Debug.Trace("WOSK_WorkerAlias: STUMP-FIM " + akWorker + " out of sight (" + WOSK_Guards.SeenText(akWorker) + "), " + late + " h after the estimate - closed, moved home")
+        _ResolveContractCompletion(akWorker)
+        return
+    endIf
+    RegisterForSingleUpdate(5.0)
+EndFunction
+
+; Fase 35 etapa 11 (D320): the wait for a worker who is walking to the block in the player's sight.
+; Every 5 s: arrived -> cut; out of sight -> put at the block and cut; the ceiling (data, real
+; seconds) -> cut where he stands, never moved in sight.
+Function _StumpWaitTick(Actor akWorker)
+    ObjectReference block = StorageUtil.GetFormValue(akWorker, "WOSK_ContractDestination", None) as ObjectReference
+    if !block || StorageUtil.GetStringValue(akWorker, "WOSK_Contract", CONTRACT_IDLE) != CONTRACT_WORKING
+        StorageUtil.UnsetIntValue(akWorker, "WOSK_StumpWait")
+        Debug.Trace("WOSK_WorkerAlias: STUMP-ESPERA ends - the contract is no longer working")
+        return
+    endIf
+    Float waited = Utility.GetCurrentRealTime() - StorageUtil.GetFloatValue(akWorker, "WOSK_StumpWaitFrom", 0.0)
+    Bool same = _SameSpace(akWorker, block)
+    if same && akWorker.GetDistance(block) <= 400.0
+        StorageUtil.UnsetIntValue(akWorker, "WOSK_StumpWait")
+        Debug.Trace("WOSK_WorkerAlias: STUMP-ESPERA arrived after " + waited + " s - cutting")
+        _StartCutting(akWorker, block)
+    elseIf !WOSK_Guards.Seen(akWorker)
+        StorageUtil.UnsetIntValue(akWorker, "WOSK_StumpWait")
+        akWorker.MoveTo(block)
+        Debug.Trace("WOSK_WorkerAlias: STUMP-POSTO " + akWorker + " out of sight after " + waited + " s - put at the block")
+        _StartCutting(akWorker, block)
+    elseIf waited >= WOSK_Stump.Param("waitcapseconds", 120.0)
+        StorageUtil.UnsetIntValue(akWorker, "WOSK_StumpWait")
+        Debug.Trace("WOSK_WorkerAlias: STUMP-TETO " + akWorker + " still walking after " + waited + " s, dist=" + _DistText(akWorker, block) + " - cutting where he stands")
+        _StartCutting(akWorker, block)
+    else
+        RegisterForSingleUpdate(5.0)
+    endIf
 EndFunction
 
 Function _EnterTravelingBack(Actor akWorker)
@@ -712,6 +1048,16 @@ Function _EnterTravelingBack(Actor akWorker)
         WOSK_PlayerHouse.ProbeCooking(akWorker, "leg returning")
         return
     endIf
+    WOSK_Stump.StopUse(akWorker)
+    if _NativeHome(akWorker)
+        ; Fase 34 etapa 2 (D299): a follower of Whiterun goes home by the package he gets
+        ; back when ours are cleared (V077 F34E1.5); there is no ref to travel to.
+        ActorUtil.RemovePackageOverride(akWorker, _SandboxPackage())
+        _AdvanceTo(akWorker, CONTRACT_TRAVELING_BACK)
+        akWorker.EvaluatePackage()
+        return
+    endIf
+    WOSK_Stump.StopUse(akWorker)
     ; Home becomes the target before the state changes, so the position line
     ; _AdvanceTo writes names where the worker is going now.
     ActorUtil.RemovePackageOverride(akWorker, _SandboxPackage())
@@ -726,10 +1072,10 @@ EndFunction
 ; the contract's start - never a fresh full leg from "now".
 Function _ArmContractTimer(Actor akWorker, string asContract)
     Float taskHours = _ContractTaskHours(akWorker)
-    Float legHours = taskHours / 3.0
+    Float legHours = _LegOutHours(akWorker)
     Float dueAt = legHours
     if asContract == CONTRACT_WORKING
-        dueAt = legHours * 2.0
+        dueAt = _WorkEndHours(akWorker)
     elseIf asContract == CONTRACT_TRAVELING_BACK
         dueAt = taskHours
     endIf
@@ -846,6 +1192,26 @@ EndFunction
 Function _ClearContractClock(Actor akWorker)
     StorageUtil.UnsetFloatValue(akWorker, "WOSK_ContractStartHours")
     StorageUtil.UnsetFloatValue(akWorker, "WOSK_ContractTaskHours")
+    StorageUtil.UnsetFloatValue(akWorker, "WOSK_StumpLegOut")
+    StorageUtil.UnsetFloatValue(akWorker, "WOSK_StumpWork")
+EndFunction
+
+; Fase 35 etapa 11 (D320): where the legs end, in hours since the issue. A firewood contract has
+; its own (the way out, then the working hour); every other contract is thirds of its length.
+Float Function _LegOutHours(Actor akWorker)
+    Float own = StorageUtil.GetFloatValue(akWorker, "WOSK_StumpLegOut", -1.0)
+    if own > 0.0 && StorageUtil.GetIntValue(akWorker, "WOSK_ContractStump", 0) == 1
+        return own
+    endIf
+    return _ContractTaskHours(akWorker) / 3.0
+EndFunction
+
+Float Function _WorkEndHours(Actor akWorker)
+    Float own = StorageUtil.GetFloatValue(akWorker, "WOSK_StumpWork", -1.0)
+    if own > 0.0 && StorageUtil.GetFloatValue(akWorker, "WOSK_StumpLegOut", -1.0) > 0.0 && StorageUtil.GetIntValue(akWorker, "WOSK_ContractStump", 0) == 1
+        return StorageUtil.GetFloatValue(akWorker, "WOSK_StumpLegOut", 0.0) + own
+    endIf
+    return _ContractTaskHours(akWorker) / 3.0 * 2.0
 EndFunction
 
 ; abPush=false: the caller pushes the panel itself, later (OnDeath, which must
@@ -853,6 +1219,9 @@ EndFunction
 Function _AdvanceTo(Actor akWorker, string asNewContractState, Bool abPush = true)
     string old = StorageUtil.GetStringValue(akWorker, "WOSK_Contract", CONTRACT_IDLE)
     StorageUtil.SetStringValue(akWorker, "WOSK_Contract", asNewContractState)
+    if asNewContractState != CONTRACT_WORKING
+        WOSK_Stump.StopUse(akWorker)
+    endIf
     ; Fase 26 conserto 1 (D233): the dialogue reads the state as a faction rank.
     WOSK_WorkerState.Mirror(akWorker, asNewContractState)
     Debug.Trace("WOSK_WorkerAlias: " + akWorker + " contract " + old + " -> " + asNewContractState)
@@ -882,10 +1251,35 @@ EndFunction
 ; RETIRED, --(morte)--> DEAD. Delivered batch/gold only apply on a lifecycle
 ; result that leaves the worker alive to hand it over - matches the
 ; reference model's apply_incident_to_lifecycle().
+;
+; Fase 35 etapa 6 (V096): a contract resolves ONCE. Three callers reach this (the clock, the
+; arrival probe, the pickup) and the body has latent calls, so a second caller used to enter
+; while the first was still inside (17:19:43 and 17:19:45, two "Injured" lines). Refused when the
+; contract is already IDLE or AWAITING_PICKUP (resolved), and while another call is inside.
 Function _ResolveContractCompletion(Actor akWorker)
+    string current = StorageUtil.GetStringValue(akWorker, "WOSK_Contract", CONTRACT_IDLE)
+    if current == CONTRACT_IDLE || current == CONTRACT_AWAITING_PICKUP
+        Debug.Trace("WOSK_WorkerAlias: RESOLUCAO-DOBRO-RECUSADA " + akWorker + " - contract is already " + current)
+        return
+    endIf
+    Float now = Utility.GetCurrentRealTime()
+    Float since = StorageUtil.GetFloatValue(akWorker, "WOSK_ResolveSince", 0.0)
+    if since > 0.0 && now >= since && now - since < 30.0
+        Debug.Trace("WOSK_WorkerAlias: RESOLUCAO-DOBRO-RECUSADA " + akWorker + " - another call is resolving it (" + (now - since) + " s)")
+        return
+    endIf
+    StorageUtil.SetFloatValue(akWorker, "WOSK_ResolveSince", now)
+    _ResolveContractBody(akWorker)
+    StorageUtil.UnsetFloatValue(akWorker, "WOSK_ResolveSince")
+EndFunction
+
+Function _ResolveContractBody(Actor akWorker)
     ; V014 (D102): an encounter bandit still alive no longer decides anything.
     _UnwatchThreat(akWorker)
     StorageUtil.UnsetFormValue(akWorker, "WOSK_EncounterThreat")
+    ; Fase 35 etapa 4 (D313, V088): the guard comes back with the worker and goes to his post;
+    ; he is never left on the map.
+    WOSK_Guards.Detach(akWorker, "contract resolved")
     ; The legs are over; the AWAITING_PICKUP timeout below is armed on its own.
     _ClearContractClock(akWorker)
     ; Fase 15: the gear multiplier stored at issue (1.0 for a contract issued
@@ -893,6 +1287,11 @@ Function _ResolveContractCompletion(Actor akWorker)
     Float gearMultiplier = StorageUtil.GetFloatValue(akWorker, "WOSK_ContractGear", 1.0)
     StorageUtil.UnsetFloatValue(akWorker, "WOSK_ContractGear")
     string outcome = StorageUtil.GetStringValue(akWorker, "WOSK_IncidentOutcome", OUTCOME_SUCCESS)
+    ; Fase 34 etapa 4 (A2): a follower does not die of a contract result; death is a serious injury.
+    if outcome == OUTCOME_DEATH && WOSK_Followers.IsFollower(akWorker)
+        Debug.Trace("WOSK_WorkerAlias: " + akWorker + " is a follower - outcome DEATH becomes MAJOR")
+        outcome = OUTCOME_MAJOR
+    endIf
     string profession = _WorkerProfession(akWorker)
     string taskId = StorageUtil.GetStringValue(akWorker, "WOSK_TaskId", "")
     string tier = StorageUtil.GetStringValue(akWorker, "WOSK_Tier", "apprentice")
@@ -935,7 +1334,9 @@ Function _ResolveContractCompletion(Actor akWorker)
         StorageUtil.SetIntValue(akWorker, "WOSK_ContractsCompleted", completedSoFar + 1)
         StorageUtil.SetStringValue(akWorker, "WOSK_Lifecycle", LIFECYCLE_AVAILABLE)
         _MaybeAdvanceTier(akWorker)
-        Debug.Notification("Honest Work: your worker has returned with " + qty + " units.")
+        ; Fase 34 etapa 6 (D309, V088): the notice names the place he is at, after he is put there.
+        _PlaceAtNativeHome(akWorker)
+        Debug.Notification("Honest Work: " + akWorker.GetDisplayName() + " is back at " + HomePlaceName(akWorker) + " with " + qty + " units.")
 
     else
         _ReleaseContractVeins(akWorker, "outcome " + outcome)
@@ -948,6 +1349,11 @@ Function _ResolveContractCompletion(Actor akWorker)
         ; Fase 28 conserto 1 (D238, V060): says what the injury cost - the contract
         ; brought nothing - and that he takes no work until cured.
         Debug.Notification("Honest Work: " + akWorker.GetDisplayName() + " was injured. The contract brought nothing, and they cannot work until cured.")
+
+    elseIf outcome == OUTCOME_MAJOR && WOSK_Followers.IsFollower(akWorker)
+        ; Fase 34 etapa 4 (P5): no pension for a follower; he leaves the service at once (below).
+        StorageUtil.SetStringValue(akWorker, "WOSK_Lifecycle", LIFECYCLE_AVAILABLE)
+        Debug.Notification("Honest Work: " + akWorker.GetDisplayName() + " was badly hurt at work and is released from your service" + _HeadsBackTo(akWorker) + ". No pension is due.")
 
     elseIf outcome == OUTCOME_MAJOR
         StorageUtil.SetStringValue(akWorker, "WOSK_Lifecycle", LIFECYCLE_RETIRED)
@@ -980,11 +1386,16 @@ Function _ResolveContractCompletion(Actor akWorker)
         _ReturnHomeIfConfigured(akWorker)
         RegisterForSingleUpdateGameTime(7.0 * 24.0)
     elseIf outcome == OUTCOME_MINOR
+        _PlaceAtNativeHome(akWorker)
         ; Fase 28 conserto 1 (D238, V060): an injured contract has no batch, so there is
         ; nothing to wait for - straight to IDLE (Cure is a lifecycle order), never an
         ; AWAITING_PICKUP whose Collect hands over zero.
         _AdvanceTo(akWorker, CONTRACT_IDLE)
         _ReturnHomeIfConfigured(akWorker)
+    elseIf outcome == OUTCOME_MAJOR && WOSK_Followers.IsFollower(akWorker)
+        ; Fase 34 etapa 4 (P5): Fire() is the release (SendAway -> ReleaseFollower), free for him.
+        _AdvanceTo(akWorker, CONTRACT_IDLE, false)
+        Fire()
     elseIf outcome == OUTCOME_MAJOR
         ; Fase 31 conserto 1 (D257, V063): RETIRED no longer frees the slot nor sends the
         ; worker away. He keeps the place, takes no contract, goes home like an injured
@@ -1250,6 +1661,8 @@ Function Fire()
         handedOver = _HandOverPendingBatch(worker)
         if StorageUtil.GetStringValue(worker, "WOSK_Lifecycle", "") == LIFECYCLE_RETIRED
             Debug.Notification("Honest Work: " + worker.GetDisplayName() + " has been pensioned off." + handedOver)
+        elseIf WOSK_Followers.IsFollower(worker)
+            Debug.Notification("Honest Work: " + worker.GetDisplayName() + " is released" + _HeadsBackTo(worker) + "." + handedOver)
         else
             Debug.Notification("Honest Work: " + worker.GetDisplayName() + " has been dismissed." + handedOver)
         endIf
@@ -1284,6 +1697,10 @@ Int Function DismissalFee()
     ; pension, not for the dismissal fee; the panel reads this one number for both.
     if StorageUtil.GetStringValue(worker, "WOSK_Lifecycle", "") == LIFECYCLE_RETIRED
         return PensionFee()
+    endIf
+    ; Fase 34 etapa 2 (A4): releasing a follower is free.
+    if WOSK_Followers.IsFollower(worker)
+        return 0
     endIf
     string profession = StorageUtil.GetStringValue(worker, "WOSK_Profession", "miner")
     string tier = StorageUtil.GetStringValue(worker, "WOSK_Tier", "apprentice")
@@ -1456,7 +1873,10 @@ Event OnEncounterThreatKilled(string asEventName, string asKillerId, float afNum
         return
     endIf
     StorageUtil.SetStringValue(worker, "WOSK_IncidentOutcome", OUTCOME_SUCCESS)
-    Debug.Trace("WOSK_WorkerAlias: encounter bandit " + akSender + " killed (killer id " + asKillerId + ") with " + worker + " alive, outcome overridden to SUCCESS")
+    ; Fase 35 etapa 4 (B8): a bodyguard who kills the bandit counts like anyone who does.
+    Actor guardKiller = WOSK_Guards.GuardOf(worker)
+    Bool byGuard = guardKiller && asKillerId == guardKiller.GetFormID() as string
+    Debug.Trace("WOSK_WorkerAlias: encounter bandit " + akSender + " killed (killer id " + asKillerId + ", by the bodyguard=" + byGuard as Int + ") with " + worker + " alive, outcome overridden to SUCCESS")
 EndEvent
 
 ; V014 (D102): the worker dying is DEATH whoever the killer is - the old rule
@@ -1485,6 +1905,8 @@ Event OnDeath(Actor akKiller)
     WOSK_LedgerScript.RecordOutcome(worker, OUTCOME_DEATH, StorageUtil.GetStringValue(worker, "WOSK_TaskId", ""), 0, 0)
     UnregisterForUpdateGameTime()
     _UnwatchThreat(worker)
+    ; Fase 35 etapa 4 (D313): the worker is dead, the guard does not follow a corpse.
+    WOSK_Guards.Detach(worker, "worker died")
     ActorUtil.ClearPackageOverride(worker)
     ; Fase 27 (D232): the trade's outfit goes back to the original one.
     ; Fase 30 (D244): a dead hunter keeps what the player gave him (on the corpse).
@@ -1501,6 +1923,9 @@ Event OnDeath(Actor akKiller)
     ; The slot is freed first now; the one push below shows the empty row.
     _AdvanceTo(worker, CONTRACT_IDLE, false)
     WOSK_WorkerState.Clear(worker)
+    ; Fase 34 etapa 4 (P10): a follower who really dies leaves like any worker (ledger,
+    ; alias cleared, body stays); his marks go so nothing reads him as a worker again.
+    WOSK_Followers.ForgetFollower(worker)
     Clear()
     Debug.Trace("WOSK_WorkerAlias: death - alias cleared, now holds " + GetActorRef())
     WOSK_PanelBridgeScript.PushPanelState()
@@ -1689,8 +2114,62 @@ EndFunction
 ; So even without an explicit SetWorkerHome call the worker returns to
 ; the inn via HomeMarker/_HomeTarget.
 Function _ReturnHomeIfConfigured(Actor akWorker)
+    _ReturnHomeCore(akWorker)
+    ; Fase 34 etapa 5 (D308, V086): where the follower stands after EVERY send home.
+    if WOSK_Followers.IsFollower(akWorker)
+        LogHomeState("after send home")
+    endIf
+EndFunction
+
+; Fase 34 etapa 5 (D308): hiring a follower sends him home at once - the same path as every
+; other send (Mare + sandbox, or his own package). Skipped for a cook (MoveIn did it).
+Function SendHomeOnHire()
+    Actor worker = GetActorRef()
+    if !worker || worker.IsDead()
+        return
+    endIf
+    Debug.Trace("WOSK_WorkerAlias: " + worker + " hired - sending him home now " + _WhereString(worker))
+    _ReturnHomeIfConfigured(worker)
+EndFunction
+
+; Fase 34 etapa 5 (D308, V086): one line with cell, position, distance to the home marker, the
+; running package, Is3DLoaded and IsDisabled. The maintainer did not find the Belrand in the Mare
+; though the log put him there; this is the line that says where he really is.
+Function LogHomeState(string asWhy)
+    Actor w = GetActorRef()
+    if !w
+        return
+    endIf
+    ObjectReference home = _HomeTarget(w)
+    string dist = "n/a"
+    if home && _SameSpace(w, home)
+        dist = "" + (w.GetDistance(home) as Int)
+    endIf
+    Debug.Trace("WOSK_WorkerAlias: HOME-STATE " + asWhy + " - worker=" + w + " cell=" + w.GetParentCell() + " pos=(" + (w.GetPositionX() as Int) + "," +                 (w.GetPositionY() as Int) + "," + (w.GetPositionZ() as Int) + ") home=" + home + " distHome=" + dist + " package=" + w.GetCurrentPackage() +                 " loaded=" + w.Is3DLoaded() + " disabled=" + w.IsDisabled() + " nativeHome=" + _NativeHome(w) as Int)
+EndFunction
+
+Function _ReturnHomeCore(Actor akWorker)
+    if _NativeHome(akWorker)
+        ; Fase 34 etapa 2 (D299): nothing to move to; his own package takes him home.
+        akWorker.EvaluatePackage()
+        return
+    endIf
     ObjectReference home = _HomeTarget(akWorker)
-    if home && _WorkerProfession(akWorker) == "cook" && _SameSpace(akWorker, home)
+    if home && WOSK_Followers.IsFollower(akWorker) && _WorkerProfession(akWorker) != "cook"
+        ; Follower (not a cook: he lives in the house like any cook) at the Mare fallback: an X offset so two do not share one point.
+        Float offX = StorageUtil.GetFloatValue(akWorker, WOSK_Followers.KeyHomeOffset(), 0.0)
+        akWorker.MoveTo(home, offX, 0.0, 0.0)
+        Debug.Trace("WOSK_WorkerAlias: follower " + akWorker + " sent home to " + home + " offsetX=" + offX)
+        _AfterMove(akWorker, home, "follower sent home")
+        ; Fase 34 etapa 4 (D306, V083 F34E3.4): the same sandbox at the Mare marker as in the
+        ; player's house. Without it his own routine (Solitude) walked the Belrand out of
+        ; the inn five times in a row. Taken off by LeaveHome at the next contract and by
+        ; ClearPackageOverride when he is released. Removed first so it is never stacked twice.
+        ActorUtil.RemovePackageOverride(akWorker, WOSK_PlayerHouse.HomeSandbox())
+        ActorUtil.AddPackageOverride(akWorker, WOSK_PlayerHouse.HomeSandbox(), 30, 0)
+        akWorker.EvaluatePackage()
+        Debug.Trace("WOSK_WorkerAlias: follower " + akWorker + " holds the home sandbox at " + home)
+    elseIf home && _WorkerProfession(akWorker) == "cook" && _SameSpace(akWorker, home)
         ; D234: the cook is already in his house, at the pot; no jump back to the marker.
         Debug.Trace("WOSK_WorkerAlias: " + akWorker + " is already in his house - not moved")
         WOSK_PlayerHouse.StayHome(akWorker)
@@ -1743,6 +2222,15 @@ EndFunction
 Bool Function EnsureAtHome(string asWhy)
     Actor worker = GetActorRef()
     if !worker || worker.IsDead()
+        return false
+    endIf
+    ; Fase 34 etapa 4 (D306, V078 achado): the dialogue "team up again" of the framework cannot
+    ; be closed (its conditions are in a .pex of the NFF, not measured); recruiting him by it
+    ; releases him from the mod instead. Seen here, at every load, cell load and panel.
+    if WOSK_Followers.IsFollower(worker) && worker.IsPlayerTeammate()
+        Debug.Trace("WOSK_WorkerAlias: " + worker + " was recruited by his framework (" + asWhy + ") - released from the mod")
+        Debug.Notification("Honest Work: " + worker.GetDisplayName() + " rejoined you and no longer works here.")
+        Fire()
         return false
     endIf
     string contract = StorageUtil.GetStringValue(worker, "WOSK_Contract", CONTRACT_IDLE)
@@ -1997,7 +2485,7 @@ Float Function TaskRank(string asProfession, Int aiTaskIndex) global
     return WOSK_Registry.GetTierFloat(asProfession, WOSK_Registry.GetTaskString(asProfession, aiTaskIndex, "minTier", ""), "minContracts", -1.0)
 EndFunction
 
-; N expected: the middle of batchMin / batchMax (SPEC 5.5).
+; N expected: the middle of batchMin / batchMax.
 Float Function TaskBatch(string asProfession, Int aiTaskIndex) global
     return (WOSK_Registry.GetTaskFloat(asProfession, aiTaskIndex, "batchMin", 0.0) + WOSK_Registry.GetTaskFloat(asProfession, aiTaskIndex, "batchMax", 0.0)) / 2.0
 EndFunction
@@ -2175,6 +2663,10 @@ Function RestoreTravelTarget()
     ; checks that a worker without a running contract is in his home cell (the contract
     ; running at load is checked by the clock, and again by the cell load of the player).
     StorageUtil.UnsetIntValue(worker, "WOSK_HomeFixN")
+    ; Fase 35 etapa 4 (D313): the link is lost on a load (V024): the guard's tick puts it back.
+    if WOSK_Guards.GuardOf(worker)
+        RegisterForSingleUpdate(6.0)
+    endIf
     EnsureAtHome("load")
     ; Fase 26 conserto 1 (D233): a worker hired before the state faction existed,
     ; or whose rank was lost, gets it back from the key on every load.
@@ -2217,8 +2709,42 @@ EndFunction
 ; home (SetWorkerHome), else the candidate marker of the spot the worker was
 ; hired from, else the inn's first candidate marker (a worker hired before D105
 ; etapa 2 has no spot saved).
+ObjectReference Function _FollowerHouseMarker(Actor akWorker)
+    if !WOSK_Followers.IsFollower(akWorker)
+        return None
+    endIf
+    string house = WOSK_PlayerHouse.ChosenHouse()
+    if house == ""
+        return None
+    endIf
+    return WOSK_PlayerHouse.HomeMarker(house)
+EndFunction
+
+; Fase 34 etapa 7 (D310, V090): " and heads back to <place>" for a follower leaving the service, the
+; place being his own home (the one ReleaseFollower sends him to); "" when the game names none.
+string Function _HeadsBackTo(Actor akWorker)
+    string place = WOSK_Followers.OwnHomeName(akWorker)
+    if place == ""
+        return ""
+    endIf
+    return " and heads back to " + place
+EndFunction
+
+Bool Function _NativeHome(Actor akWorker)
+    return StorageUtil.GetIntValue(akWorker, WOSK_Followers.KeyNativeHome(), 0) == 1
+EndFunction
+
 ObjectReference Function _HomeTarget(Actor akWorker)
+    if _NativeHome(akWorker)
+        return None
+    endIf
     Form home = StorageUtil.GetFormValue(akWorker, "WOSK_WorkerHome", None)
+    if !home
+        ; Fase 34 etapa 2, conserto P6 (D300): a follower from outside Whiterun goes to the
+        ; player's house when he owns one NOW (read at every return, so a house bought later
+        ; counts from the next contract); else the inn as before.
+        home = _FollowerHouseMarker(akWorker)
+    endIf
     if !home
         home = StorageUtil.GetFormValue(Game.GetPlayer(), "WOSK_HoldHome_0", None)
     endIf
@@ -2318,6 +2844,52 @@ Bool Function _SameSpace(ObjectReference akA, ObjectReference akB)
     return akB.GetParentCell() == parentCell
 EndFunction
 
+; Fase 34 etapa 6 (D309, V088): the place the worker's home is, in words, for the notice and the
+; panel. A follower of Whiterun: the location of his own home (his editor location, e.g. The
+; Drunken Huntsman for Jenassa); any other worker: the cell of his home marker (The Bannered
+; Mare, or the player's house). "home" only when nothing reads.
+string Function HomePlaceName(Actor akWorker)
+    if _NativeHome(akWorker)
+        Location own = akWorker.GetEditorLocation()
+        if own && own.GetName() != ""
+            return own.GetName()
+        endIf
+        return "home"
+    endIf
+    ObjectReference home = _HomeTarget(akWorker)
+    if home
+        Cell homeCell = home.GetParentCell()
+        if homeCell && homeCell.GetName() != ""
+            return homeCell.GetName()
+        endIf
+    endIf
+    return "home"
+EndFunction
+
+; Fase 34 etapa 6 (D309, V088): "back" only when he is there. A follower of Whiterun has no marker
+; (D299): his own package is meant to take him home, but the clock can end the leg before he
+; arrives (V088: Jenassa on the open map, the panel said "back home"). When the leg ends and he
+; is not in his own home location, he is put at his editor location, as the non-native worker
+; is put at his marker (_ReturnHomeCore). Called before AWAITING_PICKUP; HOME-STATE after.
+Function _PlaceAtNativeHome(Actor akWorker)
+    if !_NativeHome(akWorker)
+        return
+    endIf
+    Location own = akWorker.GetEditorLocation()
+    if !own
+        Debug.Trace("WOSK_WorkerAlias: " + akWorker + " has no editor location - not placed at his home")
+        return
+    endIf
+    if akWorker.IsInLocation(own)
+        Debug.Trace("WOSK_WorkerAlias: " + akWorker + " is already in his home location " + own.GetName())
+        return
+    endIf
+    Debug.Trace("WOSK_WorkerAlias: " + akWorker + " not in his home location when the leg ended - placed at " + own.GetName() + " " + _WhereString(akWorker))
+    akWorker.MoveToMyEditorLocation()
+    akWorker.EvaluatePackage()
+    LogHomeState("leg ended, placed at home")
+EndFunction
+
 Bool Function _IsAtHome(Actor akWorker)
     ObjectReference home = _HomeTarget(akWorker)
     if !home || !_SameSpace(akWorker, home)
@@ -2326,7 +2898,7 @@ Bool Function _IsAtHome(Actor akWorker)
     return akWorker.GetDistance(home) <= HOME_ARRIVAL_RADIUS_UNITS
 EndFunction
 
-; Fase 15, SPEC 5.7: a task with bowMultiplier > 1.0 (the hunter's) multiplies
+; Fase 15: a task with bowMultiplier > 1.0 (the hunter's) multiplies
 ; the batch when the worker has a bow equipped at issue. One read of the
 ; equipped weapon, at issue; 1.0 for every other task, or without a bow.
 ; ASSUMPTION: a hired NPC may never have a bow equipped (Fase 15 A).

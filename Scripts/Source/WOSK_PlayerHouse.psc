@@ -214,6 +214,18 @@ string Function MovedIntoText(string asName, string asHouse) global
     return asName + " moved into your house."
 EndFunction
 
+; Fase 35 etapa 9 (V102): the place of a guard who waits in a house, worded here for the same
+; reason as MovedIntoText: Location.GetName() came back as "breezehome" (the id's spelling) and the
+; card read "Waits at breezehome". asPlace is the name the game gave, compared without case.
+string Function WaitsAtText(string asPlace) global
+    if asPlace == "breezehome"
+        return "Waits at Breezehome"
+    elseIf asPlace == "tundra_homestead"
+        return "Waits at Tundra Homestead"
+    endIf
+    return "Waits at " + asPlace
+EndFunction
+
 ; The sentence the player reads when the cook cannot be hired or sent to work.
 string Function NeedsHouseText(string asName) global
     return asName + " needs a house of yours in Whiterun to live and cook in (Breezehome or Tundra Homestead)."
@@ -387,6 +399,6 @@ EndFunction
 
 Function _SetHouse(Actor akWorker, string asHouse) global
     StorageUtil.SetStringValue(akWorker, "WOSK_House", asHouse)
-    ; SPEC 13.2, per worker: read first by WOSK_WorkerAliasScript._HomeTarget.
+    ; Per worker: read first by WOSK_WorkerAliasScript._HomeTarget.
     StorageUtil.SetFormValue(akWorker, "WOSK_WorkerHome", HomeMarker(asHouse))
 EndFunction

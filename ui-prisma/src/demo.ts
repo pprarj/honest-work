@@ -100,6 +100,7 @@ const tiers: HwTierInfo[] = PROFESSIONS.flatMap((profession) =>
 const init: HwInitPayload = {
   workerPoolSize: 4,
   tiers,
+  guardFee: { rate: 0.25, min: 40 },
   tasks: [
     T("cook", "cook_simple", "Simple meals", "apprentice", 1, 4, 6, 0.01, 6, 5.666299819946289),
     T("cook", "cook_stew", "Soups and stews", "worker", 2, 3, 5, 0.01, 8, 3.1),
@@ -264,7 +265,7 @@ function installFakeHost(): void {
   window.hwPickUp = (argument) => {
     const w = worker(readArg(argument).aliasIndex);
     if (!w) return answer({ action: "collect", slot: -1, code: "EMPTY", arg: "", number: 0 });
-    if (w.state === "Awaiting pickup") return answer({ action: "collect", slot: w.slot, code: "COLLECTED", arg: "", number: 9 });
+    if (w.state.startsWith("Awaiting pickup")) return answer({ action: "collect", slot: w.slot, code: "COLLECTED", arg: "", number: 9 });
     answer({ action: "collect", slot: w.slot, code: "NOT_READY", arg: NOT_READY[w.state] ?? "IDLE", number: 0 });
   };
   window.hwCure = (argument) => {

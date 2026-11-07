@@ -8,7 +8,7 @@
 //
 // Pure helpers for the panel: wording, tier ranks, and the split of the history
 // lines Papyrus keeps as ids and numbers (WOSK_LedgerScript, D168). Nothing in
-// here decides a game rule - every rule stays in Papyrus (SPEC 8); this file
+// here decides a game rule - every rule stays in Papyrus; this file
 // only turns what arrived into words and numbers on screen.
 
 import type { HwHistoryPayload, HwOutcome, HwSourceRow, HwTaskInfo, HwTierInfo, HwWorkerRow, HwWorkerStats } from "./prisma-bridge";
@@ -46,12 +46,24 @@ export const PICKUP_READY = -2;
 export const PICKUP_FAR = -3;
 export const PICKUP_EMPTY = -4;
 
+// Fase 34 etapa 6 (D309): Papyrus words the waiting state with the place he is at ("Awaiting
+// pickup at The Drunken Huntsman"); the page only reads it, it never works the place out.
+export const PICKUP_STATE = "Awaiting pickup";
+export function isAwaitingPickup(state: string): boolean {
+  return state === PICKUP_STATE || state.startsWith(PICKUP_STATE + " at ");
+}
+// The place in that label, "" when Papyrus sent none.
+export function pickupPlace(state: string | undefined): string {
+  if (!state) return "";
+  return state.startsWith(PICKUP_STATE + " at ") ? state.slice(PICKUP_STATE.length + 4) : "";
+}
+
 // Why the Collect button is off for this worker, "" when it is not.
 // Fase 33 etapa 6 (D277, V069 A1): a batch of nothing no longer turns Collect off. Papyrus
 // accepts the order and closes the contract (NO_BATCH), which is the only way out of
 // "Awaiting pickup" for him; the button stays on and says so (emptyBatchHint).
 export function pickupBlock(w: HwWorkerRow): string {
-  if (w.state !== "Awaiting pickup") return "";
+  if (!isAwaitingPickup(w.state)) return "";
   if (w.hoursLeft === PICKUP_FAR) return `${w.name} is too far away - go to them to collect.`;
   return "";
 }
@@ -64,9 +76,11 @@ export function emptyBatchHint(w: HwWorkerRow): string {
 // Fase 33 etapa 1 (V064): a worker who is home with the batch says so, whether the clock
 // ended the contract or he walked in before it (Papyrus resolves the contract on arrival).
 export function backLine(w: HwWorkerRow): string {
-  if (w.hoursLeft === PICKUP_EMPTY) return `${w.name} is back home with nothing to hand over. Collect to close the contract.`;
-  if (w.hoursLeft === PICKUP_FAR) return `${w.name} is back home with the batch - go to them to collect.`;
-  return `${w.name} is back home - the batch is ready to collect.`;
+  const at = pickupPlace(w.state);
+  const where = at ? `at ${at}` : "home";
+  if (w.hoursLeft === PICKUP_EMPTY) return `${w.name} is back ${where} with nothing to hand over. Collect to close the contract.`;
+  if (w.hoursLeft === PICKUP_FAR) return `${w.name} is back ${where} with the batch - go to them to collect.`;
+  return `${w.name} is back ${where} - the batch is ready to collect.`;
 }
 
 // Fase 33 etapa 1 (V064): the Contracts count of a worker hired at a rank above the first
@@ -102,14 +116,13 @@ export function stateTone(state: string): StateTone {
   // Fase 28 (D234): the cook on a contract reads "Cooking at <his house>"; the
   // house name is part of the text, so it is matched by its start.
   if (state.startsWith("Cooking at")) return "away";
+  if (isAwaitingPickup(state)) return "ready";
   switch (state) {
     case "Setting out":
     case "Traveling out":
     case "At work":
     case "Returning":
       return "away";
-    case "Awaiting pickup":
-      return "ready";
     case "Injured":
       return "hurt";
     case "Lost":
@@ -270,6 +283,12 @@ export function hoursFor(task: HwTaskInfo, tier: HwTierInfo | undefined): number
   return Math.max(1, Math.floor(task.hours * (tier?.durationMultiplier ?? 1) + WHOLE_HOURS_ROUNDING));
 }
 
+// Fase 35 etapa 13 (D322): firewood is back to fixed hours by the clock (the walk to the chopping block
+// is switched off in the data, for 1.2), so the page says "1 h" and no more "+ walk" (D320).
+export function durationText(task: HwTaskInfo, tier: HwTierInfo | undefined): string {
+  return hoursText(hoursFor(task, tier));
+}
+
 export function batchRangeFor(task: HwTaskInfo, tier: HwTierInfo | undefined): [number, number] {
   const m = tier?.yieldMultiplier ?? 1;
   return [Math.floor(task.batchMin * m), Math.floor(task.batchMax * m)];
@@ -325,6 +344,24 @@ export function contractText(task: HwTaskInfo): string {
   return lo === hi ? `Contract: ~${gold(lo)} gold` : `Contract: ~${gold(lo)}-${gold(hi)} gold`;
 }
 
+// Fase 35 etapa 13: the bodyguard's fee on a contract of a given cost - a share of the cost rounded up,
+// never under the floor. Mirrors WOSK_Guards.ContractFee (single precision like the script); the
+// rate and the floor come from the DLL, read from the row Papyrus charges by.
+export function guardFeeFor(cost: number, terms: { rate: number; min: number }): number {
+  const fee = Math.ceil(Math.fround(Math.fround(cost) * Math.fround(terms.rate)));
+  return Math.max(fee, Math.trunc(terms.min));
+}
+
+// "With bodyguard: ~88-130 gold" (contract plus fee); "" when the task has no price or the DLL sent no terms.
+export function guardedContractText(task: HwTaskInfo, terms: { rate: number; min: number } | undefined): string {
+  if (!terms || !(task.basePricePerUnit > 0) || (task.ingredientCostPerUnit ?? 0) < 0) return "";
+  if (NO_ESCORT_TASKS.some((t) => sameId(task.id, t))) return "";
+  const [lo, hi] = contractRange(task);
+  const gLo = lo + guardFeeFor(lo, terms);
+  const gHi = hi + guardFeeFor(hi, terms);
+  return gLo === gHi ? `With bodyguard: ~${gold(gLo)} gold` : `With bodyguard: ~${gold(gLo)}-${gold(gHi)} gold`;
+}
+
 export function taskLabel(tasks: HwTaskInfo[], taskId: string): string {
   const t = tasks.find((x) => x.id.toLowerCase() === (taskId || "").toLowerCase());
   return t ? t.label : taskId || "a contract";
@@ -372,12 +409,25 @@ export interface WordedEntry {
   tone: "spent" | "earned" | "bad" | "plain";
 }
 
+// Fase 35 etapa 6: the fee line carries "task@guard" in the task field; "<guard> guarded <worker>: <task>".
+// A line from before (no "@") reads "A bodyguard guarded <worker>: <task>".
+export function guardFeeText(worker: string, taskField: string, tasks: HwTaskInfo[]): string {
+  const at = taskField.indexOf("@");
+  const taskId = at >= 0 ? taskField.slice(0, at) : taskField;
+  const guard = at >= 0 && at < taskField.length - 1 ? taskField.slice(at + 1) : "A bodyguard";
+  return `${guard} guarded ${worker}: ${taskLabel(tasks, taskId)}`;
+}
+
 export function wordJournal(e: JournalEntry, tasks: HwTaskInfo[]): WordedEntry {
   const who = e.name || "A worker";
   const task = taskLabel(tasks, e.taskId);
   switch (e.kind) {
     case "ISSUED":
       return { text: `${who} sent out: ${task}`, amount: -e.gold, tone: "spent" };
+    case "GUARD_FEE":
+      return { text: guardFeeText(who, e.taskId, tasks), amount: -e.gold, tone: "spent" };
+    case "GUARD_ASSIGN":
+      return { text: `${who} assigned as a bodyguard`, amount: -e.gold, tone: "spent" };
     case "RETURNED":
       return { text: `${who} brought back ${e.qty} unit(s): ${task}`, amount: e.gold, tone: "earned" };
     case "INJURED":
@@ -532,6 +582,62 @@ export function blockedText(c: { blocked?: string }): string {
   return `Cannot be hired now (${c.blocked})`;
 }
 
+// Fase 35 etapa 7 (V098): Papyrus strings come back with the case of another literal, so the
+// bodyguard mark ("GUARD") reaches the page as "Guard". Ids from Papyrus are compared without case.
+export function sameId(a: string | undefined | null, b: string): boolean {
+  return (a ?? "").trim().toUpperCase() === b.toUpperCase();
+}
+
+// Fase 35 etapa 7 (V098): why "With bodyguard" is off, "" when it can be pressed. A cook works at
+// home and takes no escort; a free guard is a guard row (refused "GUARD") not escorting. When the
+// follower list has not reached the page yet nothing is known and the button stays on (Papyrus refuses).
+// Fase 35 etapa 10 (D319): tasks that never take an escort, by contract and not by profession
+// (mirrored in WOSK_Guards.TaskHasNoEscort): firewood is cut in town, at the chopping block.
+export const NO_ESCORT_TASKS = ["labor_firewood"];
+
+export function guardBlockText(
+  followers: { followers: { refused: string; place: string }[]; needsPo3?: boolean } | null | undefined,
+  profession: string,
+  taskId?: string,
+): string {
+  if ((profession ?? "").toLowerCase() === "cook") return "A cook works at home - no bodyguard goes with a meal.";
+  if (taskId && NO_ESCORT_TASKS.some((t) => sameId(taskId, t))) return "Firewood is cut in town, at the nearest chopping block - no bodyguard needed.";
+  if (!followers || followers.needsPo3) return "";
+  const free = followers.followers.filter((f) => sameId(f.refused, "GUARD") && !f.place.startsWith("Escorting"));
+  if (free.length === 0) return "No bodyguard is free. Assign a follower from the Recruit tab, or wait for one to return.";
+  return "";
+}
+
+// Fase 34 etapa 2 (D299): the words for the id of the rule that refuses a follower
+// (WOSK_Followers.Refusal). "" when he can be hired; an id not known is shown as it came.
+export function followerRefusalText(id: string): string {
+  const key = (id ?? "").trim().toUpperCase();
+  if (key === "") return "";
+  if (key === "NOT_UNIQUE") return "Not a named person; only unique followers can be hired.";
+  if (key === "ANIMAL") return "Animals cannot be hired.";
+  if (key === "NFF_IMPORT") return "Imported into a follower framework with a script of its own.";
+  if (key === "OWN_FRAMEWORK") return "Runs on a follower framework of its own; it cannot be released from here.";
+  return `Cannot be hired (${id})`;
+}
+
+// "miner:worker,hunter:master" -> { miner: "worker", hunter: "master" }.
+// Fase 34 etapa 3 (V078): Papyrus strings are interned without case, so the trade can arrive as
+// "Miner" (the first spelling the engine saw). The key is the trade ID the DLL accepts ([a-z_]),
+// so it is lowercased here; the label is made by capitalize() where it is shown.
+export function parseFollowerTiers(text: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const part of (text ?? "").split(",")) {
+    const [trade, tier] = part.split(":");
+    if (trade && tier) out[trade.trim().toLowerCase()] = tier.trim();
+  }
+  return out;
+}
+
+// What the DLL filter (PrismaPanel.cpp OnHireFollower) lets through: [a-z_], 1 to 32 chars.
+export function isTradeId(text: string): boolean {
+  return /^[a-z_]{1,32}$/.test(text);
+}
+
 // True when the task cannot be ordered because the hold has nothing for it.
 export function noSource(row: HwSourceRow | undefined): boolean {
   return reasonId(row) === "NONE";
@@ -617,6 +723,8 @@ export function wordOutcome(o: HwOutcome, name: string): WordedOutcome {
         return say(
           argUp === "OCCUPIED"
             ? `Contract issued for ${gold(o.number)} gold. ${who} goes to a held site - the risk is high.`
+            : argUp === "GUARD"
+              ? `Contract issued for ${gold(o.number)} gold with a bodyguard. ${who} is on the way.`
             : argUp === "COOK"
               ? `Contract issued for ${gold(o.number)} gold. ${who} is preparing the meal.`
               : `Contract issued for ${gold(o.number)} gold. ${who} is on the way.`,
@@ -647,6 +755,9 @@ export function wordOutcome(o: HwOutcome, name: string): WordedOutcome {
         }
         if (argUp === "FORCED") return say("That source is not part of this hold.");
         return say("There is nowhere in this hold to do this work.");
+      case "NO_GUARD":
+        if (argUp === "CONTRACT") return say("Firewood is cut in town, at the nearest chopping block - no bodyguard needed.");
+        return say(argUp === "COOK" ? "A cook works at home - no bodyguard goes with a meal." : "No bodyguard is free. Assign a follower from the Recruit tab, or wait for one to return.");
       case "NO_DESTINATION":
         return say("The way to the source could not be found.");
       case "NO_VALUE":

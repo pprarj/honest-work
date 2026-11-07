@@ -114,6 +114,16 @@ namespace HonestWork::UI::PrismaPanel
 		// fixed miner list is gone. The page shows a worker only the tasks of
 		// that worker's profession, and a task above the worker's tier locked,
 		// with the tier it needs (minTier/minTierLabel below).
+		// The bodyguard fee terms, read from the same outcome row Papyrus charges by
+		// (WOSK_Guards.ContractFee), so the quote on the page and the gold taken share one source.
+		json GuardFeeTerms()
+		{
+			const float rate = Core::ProfessionsRegistry::OutcomeRowFloat("bodyguard", 0, "contractFeeRate", 0.25f);
+			const float minFee = Core::ProfessionsRegistry::OutcomeRowFloat("bodyguard", 0, "contractFeeMin", 40.0f);
+			spdlog::info("PrismaPanel: bodyguard fee terms rate={} min={} (the quote on the page)", rate, minFee);
+			return json{ { "rate", rate }, { "min", minFee } };
+		}
+
 		std::string BuildInitPayload()
 		{
 			json tasks = json::array();
@@ -167,6 +177,7 @@ namespace HonestWork::UI::PrismaPanel
 				{ "workerPoolSize", kWorkerPoolSize },
 				{ "tasks", tasks },
 				{ "tiers", tiers },
+				{ "guardFee", GuardFeeTerms() },
 			};
 			return payload.dump();
 		}
@@ -187,6 +198,17 @@ namespace HonestWork::UI::PrismaPanel
 			return true;
 		}
 
+		// The bodyguard choice rides the task id as "<taskId>|g" (the bridge carries one string and
+		// one float; the Papyrus side strips the suffix). Only a literal JSON true adds it.
+		std::string WithGuardBit(std::string a_taskId, const json& a_obj)
+		{
+			auto it = a_obj.find("guard");
+			if (it != a_obj.end() && it->is_boolean() && it->get<bool>()) {
+				a_taskId += "|g";
+			}
+			return a_taskId;
+		}
+
 		void OnIssueContract(const char* a_argument)
 		{
 			try {
@@ -202,7 +224,7 @@ namespace HonestWork::UI::PrismaPanel
 					return;
 				}
 				Core::ModEventBridge::Send(
-					Core::ModEventBridge::kEventIssueContract, taskIdIt->get<std::string>(), static_cast<float>(aliasIndex));
+					Core::ModEventBridge::kEventIssueContract, WithGuardBit(taskIdIt->get<std::string>(), arg), static_cast<float>(aliasIndex));
 			} catch (const json::exception& e) {
 				spdlog::error("PrismaPanel: hwIssueContract could not parse '{}' ({})", a_argument, e.what());
 			}
@@ -223,7 +245,7 @@ namespace HonestWork::UI::PrismaPanel
 					return;
 				}
 				Core::ModEventBridge::Send(
-					Core::ModEventBridge::kEventIssueOccupied, taskIdIt->get<std::string>(), static_cast<float>(aliasIndex));
+					Core::ModEventBridge::kEventIssueOccupied, WithGuardBit(taskIdIt->get<std::string>(), arg), static_cast<float>(aliasIndex));
 			} catch (const json::exception& e) {
 				spdlog::error("PrismaPanel: hwIssueOccupied could not parse '{}' ({})", a_argument, e.what());
 			}
@@ -307,6 +329,46 @@ namespace HonestWork::UI::PrismaPanel
 			}
 		}
 
+		// Fase 34 etapa 2 (D299): hire a follower from the Recruit tab. The trade id is text from
+		// the page, so it is clipped and limited to [a-z_] before it travels to Papyrus.
+		void OnHireFollower(const char* a_argument)
+		{
+			try {
+				json arg = json::parse(a_argument);
+				int index = 0;
+				if (!TryGetInt(arg, "index", index)) {
+					spdlog::error("PrismaPanel: hwHireFollower missing/invalid index: {}", a_argument);
+					return;
+				}
+				std::string profession = arg.value("profession", std::string());
+				if (profession.empty() || profession.size() > 32 ||
+					profession.find_first_not_of("abcdefghijklmnopqrstuvwxyz_") != std::string::npos) {
+					spdlog::error("PrismaPanel: hwHireFollower invalid profession: {}", a_argument);
+					return;
+				}
+				Core::ModEventBridge::Send(Core::ModEventBridge::kEventHireFollower, profession,
+					static_cast<float>(index));
+			} catch (const json::exception& e) {
+				spdlog::error("PrismaPanel: hwHireFollower could not parse '{}' ({})", a_argument, e.what());
+			}
+		}
+
+		// Assign a follower of the player as a bodyguard (the Recruit tab, same list as the hire).
+		void OnAssignGuard(const char* a_argument)
+		{
+			try {
+				json arg = json::parse(a_argument);
+				int index = 0;
+				if (!TryGetInt(arg, "index", index)) {
+					spdlog::error("PrismaPanel: hwAssignGuard missing/invalid index: {}", a_argument);
+					return;
+				}
+				Core::ModEventBridge::Send(Core::ModEventBridge::kEventAssignGuard, "", static_cast<float>(index));
+			} catch (const json::exception& e) {
+				spdlog::error("PrismaPanel: hwAssignGuard could not parse '{}' ({})", a_argument, e.what());
+			}
+		}
+
 		// --- Recruit tab natives (D104 etapa 3, Scripts/Source/WOSK_Panel.psc) ---
 		//
 		// Papyrus builds the candidate list - tier, profession and price live in
@@ -363,6 +425,42 @@ namespace HonestWork::UI::PrismaPanel
 			// ASCII-escaped, bad bytes replaced: a name is game text, and the result
 			// is pasted into a JS call.
 			std::string script = "window.hwRecruit(" +
+			                     payload.dump(-1, ' ', true, json::error_handler_t::replace) + ")";
+			SKSE::GetTaskInterface()->AddTask([script = std::move(script)]() {
+				if (g_prismaUI && g_view) {
+					g_prismaUI->Invoke(g_view, script.c_str());
+				}
+			});
+		}
+
+		// Fase 34 etapa 2 (D299): the "Your followers" section. Same shape as SetRecruitList.
+		void SetFollowerList(RE::StaticFunctionTag*, std::vector<RE::BSFixedString> a_names,
+			std::vector<RE::BSFixedString> a_places, std::vector<RE::BSFixedString> a_refused,
+			std::vector<RE::BSFixedString> a_tiers, std::int32_t a_count, std::int32_t a_needsPo3,
+			RE::BSFixedString a_message)
+		{
+			const std::size_t count = (std::min)({ static_cast<std::size_t>((std::max)(a_count, 0)), a_names.size(),
+				a_places.size(), a_refused.size(), a_tiers.size() });
+			json followers = json::array();
+			for (std::size_t i = 0; i < count; ++i) {
+				followers.push_back(json{
+					{ "index", static_cast<int>(i) },
+					{ "name", Text(a_names[i]) },
+					{ "place", Text(a_places[i]) },
+					{ "refused", Text(a_refused[i]) },
+					{ "tiers", Text(a_tiers[i]) },  // "trade:tier,trade:tier"
+				});
+				spdlog::info("PrismaPanel: follower {} '{}' at '{}' refused='{}'", i, Text(a_names[i]),
+					Text(a_places[i]), Text(a_refused[i]));
+			}
+			json payload{
+				{ "needsPo3", a_needsPo3 != 0 },
+				{ "message", Text(a_message) },
+				{ "followers", followers },
+			};
+			spdlog::info("PrismaPanel: follower list sent ({} follower(s), needsPo3 {}, message '{}')", count,
+				a_needsPo3 != 0, Text(a_message));
+			std::string script = "window.hwFollowers(" +
 			                     payload.dump(-1, ' ', true, json::error_handler_t::replace) + ")";
 			SKSE::GetTaskInterface()->AddTask([script = std::move(script)]() {
 				if (g_prismaUI && g_view) {
@@ -595,6 +693,7 @@ namespace HonestWork::UI::PrismaPanel
 				return false;
 			}
 			a_vm->RegisterFunction("SetRecruitList", kPanelScriptClass, SetRecruitList);
+			a_vm->RegisterFunction("SetFollowerList", kPanelScriptClass, SetFollowerList);
 			a_vm->RegisterFunction("SetWorkerList", kPanelScriptClass, SetWorkerList);
 			a_vm->RegisterFunction("SetSourceList", kPanelScriptClass, SetSourceList);
 			a_vm->RegisterFunction("SetHistory", kPanelScriptClass, SetHistory);
@@ -875,6 +974,8 @@ namespace HonestWork::UI::PrismaPanel
 		g_prismaUI->RegisterJSListener(g_view, "hwPickUp", &OnPickUp);
 		g_prismaUI->RegisterJSListener(g_view, "hwClosePanel", &OnClosePanel);
 		g_prismaUI->RegisterJSListener(g_view, "hwHireCandidate", &OnHireCandidate);
+		g_prismaUI->RegisterJSListener(g_view, "hwHireFollower", &OnHireFollower);
+		g_prismaUI->RegisterJSListener(g_view, "hwAssignGuard", &OnAssignGuard);
 		g_prismaUI->RegisterJSListener(g_view, "hwThemeApplied", &OnThemeApplied);
 		g_prismaUI->RegisterJSListener(g_view, "hwNote", &OnPanelNote);
 

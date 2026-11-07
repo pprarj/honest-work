@@ -224,6 +224,12 @@ EndFunction
 ; reason in a corner message.
 Int Function AcceptItem(Actor akWorker, Form akItem, Int aiCount) global
     Actor player = Game.GetPlayer()
+    ; Fase 34 etapa 2 (P11): the mod gives no equipment to a follower; it goes back.
+    if WOSK_Followers.IsFollower(akWorker)
+        akWorker.RemoveItem(akItem, aiCount, true, player)
+        Debug.Notification("Honest Work: " + akWorker.GetDisplayName() + " is a follower; use his own menu for equipment.")
+        return -4
+    endIf
     Int itemTier = ItemTier(akItem)
     Int workerRank = WorkerRank(akWorker)
     string who = akWorker.GetDisplayName()
@@ -298,6 +304,11 @@ Function GiveToWorker(Actor akWorker) global
         return
     endIf
     string who = akWorker.GetDisplayName()
+    ; Fase 34 etapa 2 (P11): before the gift menu opens, not after.
+    if WOSK_Followers.IsFollower(akWorker)
+        Debug.Notification("Honest Work: " + who + " is a follower; use his own menu for equipment.")
+        return
+    endIf
     if StorageUtil.GetStringValue(akWorker, "WOSK_Profession", "") != "hunter"
         Debug.Notification("Honest Work: only a hunter can use a bow or armor for his work. " + who + " has no use for it.")
         return

@@ -75,6 +75,9 @@ export interface HwInitPayload {
   tasks: HwTaskInfo[];
   // Absent from a DLL older than Fase 17: the ladder then draws no requirement.
   tiers?: HwTierInfo[];
+  // Fase 35 etapa 13: the bodyguard fee terms (share of the contract price, floor), read by the DLL
+  // from the row Papyrus charges by. Absent from an older DLL: the page then quotes no guarded price.
+  guardFee?: { rate: number; min: number };
 }
 
 export const HW_INIT_EVENT = "hw:init";
@@ -105,6 +108,28 @@ export interface HwRecruitPayload {
 }
 
 export const HW_RECRUIT_EVENT = "hw:recruit";
+
+// Fase 34 etapa 2 (D299): the "Your followers" section of the Recruit tab, pushed by
+// Papyrus (WOSK_Panel.SetFollowerList -> PrismaPanel.cpp SetFollowerList).
+export interface HwFollowerRow {
+  // The row Papyrus keeps; the hire order carries it back.
+  index: number;
+  name: string;
+  place: string;
+  // The id of the rule that refuses him ("NOT_UNIQUE", "ANIMAL", "NFF_IMPORT",
+  // "OWN_FRAMEWORK") or "". The page words it (model.ts).
+  refused: string;
+  // "trade:tier,trade:tier": what each trade would give him by his skill.
+  tiers: string;
+}
+
+export interface HwFollowersPayload {
+  needsPo3: boolean;
+  message: string;
+  followers: HwFollowerRow[];
+}
+
+export const HW_FOLLOWERS_EVENT = "hw:followers";
 
 // Queue item 11: the Workers tab. Same channel shape as the Recruit tab above,
 // but pushed on every contract state change (WOSK_PanelBridgeScript
@@ -209,6 +234,9 @@ declare global {
     hwHistory?: (payload: HwHistoryPayload | null) => void;
     hwOutcome?: (payload: HwOutcome) => void;
     hwRecruit?: (payload: HwRecruitPayload | null) => void;
+    hwFollowers?: (payload: HwFollowersPayload | null) => void;
+    hwHireFollower?: (argument: string) => void;
+    hwAssignGuard?: (argument: string) => void;
     hwWorkers?: (payload: HwWorkersPayload | null) => void;
     hwSources?: (payload: HwSourcesPayload | null) => void;
     hwHireCandidate?: (argument: string) => void;
@@ -234,6 +262,7 @@ declare global {
 const REMEMBERED_EVENTS: ReadonlySet<string> = new Set([
   HW_INIT_EVENT,
   HW_RECRUIT_EVENT,
+  HW_FOLLOWERS_EVENT,
   HW_WORKERS_EVENT,
   HW_SOURCES_EVENT,
   HW_HISTORY_EVENT,
@@ -272,6 +301,10 @@ window.hwRecruit = (payload: HwRecruitPayload | null) => {
   deliver<HwRecruitPayload | null>(HW_RECRUIT_EVENT, payload);
 };
 
+window.hwFollowers = (payload: HwFollowersPayload | null) => {
+  deliver<HwFollowersPayload | null>(HW_FOLLOWERS_EVENT, payload);
+};
+
 window.hwWorkers = (payload: HwWorkersPayload | null) => {
   deliver<HwWorkersPayload | null>(HW_WORKERS_EVENT, payload);
 };
@@ -300,7 +333,7 @@ window.hwTheme = (name: string) => {
 };
 
 function callHost(
-  fnName: "hwIssueContract" | "hwIssueOccupied" | "hwCure" | "hwFire" | "hwPickUp" | "hwClosePanel" | "hwHireCandidate" | "hwNote",
+  fnName: "hwIssueContract" | "hwIssueOccupied" | "hwCure" | "hwFire" | "hwPickUp" | "hwClosePanel" | "hwHireCandidate" | "hwHireFollower" | "hwAssignGuard" | "hwNote",
   argument: unknown,
 ): void {
   const fn = window[fnName];
@@ -317,8 +350,9 @@ function callHost(
 }
 
 export const HostBridge = {
-  issueContract(aliasIndex: number, taskId: string): void {
-    callHost("hwIssueContract", { aliasIndex, taskId });
+  // Fase 35 etapa 4: guard = true asks for the bodyguard; the DLL adds the "|g" bit to the task id.
+  issueContract(aliasIndex: number, taskId: string, guard = false): void {
+    callHost("hwIssueContract", guard ? { aliasIndex, taskId, guard: true } : { aliasIndex, taskId });
   },
   // Fase 33 etapa 2 (D267): the cook's house rides the contract order's channel as the
   // task id "house:<id>" (Papyrus intercepts it); slot -1 sets the house the next cook
@@ -326,8 +360,16 @@ export const HostBridge = {
   setHouse(aliasIndex: number, houseId: string): void {
     callHost("hwIssueContract", { aliasIndex, taskId: `house:${houseId}` });
   },
-  issueOccupiedContract(aliasIndex: number, taskId: string): void {
-    callHost("hwIssueOccupied", { aliasIndex, taskId });
+  issueOccupiedContract(aliasIndex: number, taskId: string, guard = false): void {
+    callHost("hwIssueOccupied", guard ? { aliasIndex, taskId, guard: true } : { aliasIndex, taskId });
+  },
+  // Fase 35 etapa 4: assign the follower of this row of the list as a bodyguard.
+  assignGuard(index: number): void {
+    callHost("hwAssignGuard", { index });
+  },
+  // Fase 35 etapa 6: release the bodyguard of this row; same channel, the order is -(1 + row).
+  releaseGuard(index: number): void {
+    callHost("hwAssignGuard", { index: -(1 + index) });
   },
   cure(aliasIndex: number): void {
     callHost("hwCure", { aliasIndex });
@@ -340,6 +382,10 @@ export const HostBridge = {
   },
   hireCandidate(spot: number): void {
     callHost("hwHireCandidate", { spot });
+  },
+  // Fase 34 etapa 2 (D299): hire the follower of this row of the list as this trade.
+  hireFollower(index: number, profession: string): void {
+    callHost("hwHireFollower", { index, profession });
   },
   // Fase 33 etapa 10 (F3): a line the page wants in HonestWork.log (a task with no word on its
   // source). The DLL listener is OnPanelNote; an older DLL has none and the call only warns.

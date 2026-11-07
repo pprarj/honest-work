@@ -26,3 +26,11 @@ test("BAC02 the credit text says where the count came from, never contradicts it
   assert.match(withCredit, /None settled with you yet/);
   assert.equal(none, "No contract settled yet.");
 });
+
+test("BAC03 the back line names the place Papyrus put in the state (D309)", () => {
+  const at = { name: "Jenassa", hoursLeft: -2, state: "Awaiting pickup at The Drunken Huntsman" } as never;
+  const line = backLine(at);
+  console.log("MEDIDA BAC03", line);
+  assert.equal(line, "Jenassa is back at The Drunken Huntsman - the batch is ready to collect.");
+  assert.doesNotMatch(line, /back home/);
+});

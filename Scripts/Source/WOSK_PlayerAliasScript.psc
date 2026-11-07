@@ -58,6 +58,10 @@ Function RegisterEvents()
     RegisterForModEvent("WOSK_RequestFire", "OnModEvent")
     RegisterForModEvent("WOSK_RequestPickUp", "OnModEvent")
     RegisterForModEvent("WOSK_RequestHire", "OnModEvent")
+    ; Fase 34 etapa 2 (D299): a follower hired from the Recruit tab (strArg = trade, numArg = row).
+    RegisterForModEvent("WOSK_RequestHireFollower", "OnModEvent")
+    ; Fase 35 etapa 4 (D313): a follower assigned as bodyguard (numArg = row of the same list).
+    RegisterForModEvent("WOSK_RequestAssignGuard", "OnModEvent")
     ; Queue item 11: the panel opened and wants the Workers tab drawn. The
     ; bridge is one-way (C++ -> Papyrus), so "the DLL asks, Papyrus answers"
     ; is the only shape available - the worker state lives in StorageUtil.
@@ -80,6 +84,10 @@ Event OnModEvent(string asEventName, string asStrArg, float afNumArg, Form akSen
         WOSK_PanelBridgeScript.RequestPickUp(aliasIndex)
     elseIf asEventName == "WOSK_RequestHire"
         WOSK_PanelBridgeScript.RequestHireFromPool(aliasIndex)
+    elseIf asEventName == "WOSK_RequestHireFollower"
+        WOSK_PanelBridgeScript.RequestHireFollower(aliasIndex, asStrArg)
+    elseIf asEventName == "WOSK_RequestAssignGuard"
+        WOSK_PanelBridgeScript.RequestAssignGuard(aliasIndex)
     elseIf asEventName == "WOSK_PanelOpened"
         ; D184: opened by the hotkey - no recruiter sign, and the Recruit
         ; list goes too (shown, not hireable).

@@ -18,6 +18,13 @@ Function SetRecruitList(string[] asNames, string[] asProfessions, string[] asTie
 ; Fase 33 etapa 10: asBlocked is, per candidate, the id of the rule that stops the hire
 ; ("COOK_HOLD": the hold already has a cook) or ""; the page words it and greys the card.
 
+; Fase 34 etapa 2 (D299): the "Your followers" section of the Recruit tab. The first aiCount
+; entries of each array are one follower each. asRefused is the id of the rule that refuses
+; him ("NOT_UNIQUE", "ANIMAL", "NFF_IMPORT", "OWN_FRAMEWORK") or ""; asTiers is
+; "trade:tier,trade:tier" - what each trade would give him. aiNeedsPo3 is 1 when the list
+; cannot be built because PO3 is missing. Ids, worded on the page.
+Function SetFollowerList(string[] asNames, string[] asPlaces, string[] asRefused, string[] asTiers, Int aiCount, Int aiNeedsPo3, string asMessage) global native
+
 Function OpenRecruit() global native
 ; Shows the panel and gives it focus. The Recruit tab appears after a
 ; SetRecruitList; opening the panel by its hotkey hides the tab again.

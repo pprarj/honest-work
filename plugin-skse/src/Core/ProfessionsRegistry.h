@@ -62,6 +62,10 @@ namespace HonestWork::Core::ProfessionsRegistry
 	// ingredient does not resolve (the contract is refused). Main thread.
 	float TaskIngredientCost(std::string_view a_profession, std::string_view a_taskId);
 
+	// One numeric field of one row of a contract type's outcomeTable (the same data
+	// WOSK_Registry.GetOutcomeRowFloat gives Papyrus); a_default when absent.
+	float OutcomeRowFloat(std::string_view a_contractType, std::int32_t a_row, std::string_view a_field, float a_default);
+
 	// D105: how many sources of a resource type the hold has
 	// (Data/SKSE/Plugins/HonestWork/hold_sources/*.json), hold and type matched
 	// ignoring case; 0 for an unknown hold or type. Call after MergeAll.

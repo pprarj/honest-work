@@ -57,7 +57,8 @@ EndFunction
 ; no plugin: one info line per game session (flag cleared on every load by
 ; OnGameLoaded), never an error.
 Function Wear(Actor akWorker, string asProfession) global
-    if !akWorker || (asProfession != "miner" && asProfession != "hunter")
+    ; Fase 34 etapa 2 (P12): no backpack on a follower; his inventory is his framework's.
+    if !akWorker || WOSK_Followers.IsFollower(akWorker) || (asProfession != "miner" && asProfession != "hunter")
         return
     endIf
     Armor pack = BackpackFor(asProfession)
@@ -101,7 +102,7 @@ EndFunction
 ; equipped state live in the save; this only covers what an outfit refresh or
 ; an older save lost). A worker out of contract is stripped.
 Function Reconcile(Actor akWorker, string asProfession, Bool abContractRunning) global
-    if !akWorker
+    if !akWorker || WOSK_Followers.IsFollower(akWorker)
         return
     endIf
     if abContractRunning

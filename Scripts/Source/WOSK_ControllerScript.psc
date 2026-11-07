@@ -71,6 +71,26 @@ Function EnsureWorkersHome(string asWhy)
     endwhile
 EndFunction
 
+; Fase 34 etapa 5 (D308, V086): the player entered a cell - every follower worker who is in it
+; (his home cell, usually) writes where he stands.
+Function LogFollowersInPlayerCell()
+    if !WorkerPool
+        return
+    endIf
+    Cell here = Game.GetPlayer().GetParentCell()
+    Int i = 0
+    while i < WorkerPoolSize
+        WOSK_WorkerAliasScript w = WorkerPool.GetAlias(i) as WOSK_WorkerAliasScript
+        if w
+            Actor a = w.GetActorRef()
+            if a && WOSK_Followers.IsFollower(a) && a.GetParentCell() == here
+                w.LogHomeState("player entered his cell")
+            endIf
+        endIf
+        i += 1
+    endwhile
+EndFunction
+
 ; Fase 33 etapa 2 (D266, V065): the pool renews with TIME. Until now it was looked at only on
 ; a cell load and a game load, so a player who waited in the inn (Wait, sleep) never saw the
 ; rotation (days 17 to 26 without a change, round 9). One game-time update every few hours
@@ -105,6 +125,7 @@ Function OnCellLoadHandler()
     KeepHiringAgentName()
     RefillCandidatePool()
     EnsureWorkersHome("cell load")
+    LogFollowersInPlayerCell()
 EndFunction
 
 ; D104 etapa 2: the candidate pool fills itself shortly after the quest
@@ -202,6 +223,11 @@ Int Function RefreshWorkerList()
             holds[count] = hold
             states[count] = WOSK_Names.StateLabelDeparted(lifecycle, contract, professions[count], StorageUtil.GetStringValue(worker, "WOSK_House", ""), StorageUtil.GetIntValue(worker, "WOSK_Departed", 1))
             ; Fase 28 conserto 1 (D238): AWAITING_PICKUP rows carry -2/-3/-4 here.
+            ; Fase 34 etapa 6 (D309): a worker waiting for pickup is named with the place he is at
+            ; ("Awaiting pickup at The Drunken Huntsman"); the page words the line from it.
+            if contract == "AWAITING_PICKUP"
+                states[count] = states[count] + " at " + a.HomePlaceName(worker)
+            endIf
             hoursLeft[count] = a.PanelHoursLeft()
             slots[count] = i
             ; The same two conditions IssueContract itself refuses on first
@@ -660,6 +686,317 @@ Int Function HireCandidate(Actor akCandidate)
     endwhile
     Debug.Trace("WOSK_Controller: HireCandidate failed, pool full (size=" + WorkerPoolSize + ")")
     return -1
+EndFunction
+
+; ---------------------------------------------------------------------------
+; Fase 34 etapa 2 (D299) - a follower of the player hired as a worker, from the
+; "Your followers" section of the Recruit tab. Free; the profession is the
+; player's choice and the tier comes from the skill nearest the trade (A3, P8).
+; ---------------------------------------------------------------------------
+
+Actor[] _followerList
+string _followerMsg = ""
+
+; The answer for the page, written by the last HireFollower.
+string Function FollowerProblem()
+    return _followerMsg
+EndFunction
+
+; Returns the alias index used, or -1 (the reason is in FollowerProblem and goes
+; to the page). The framework lets him go BEFORE the alias takes him (D298).
+Int Function HireFollower(Actor akFollower, string asProfession)
+    _followerMsg = ""
+    if !akFollower || WOSK_Followers.SkillFor(asProfession) == ""
+        _followerMsg = "That follower cannot be hired for that trade."
+        return -1
+    endIf
+    if WOSK_Followers.IsFollower(akFollower)
+        _followerMsg = akFollower.GetDisplayName() + " already works for you."
+        return -1
+    endIf
+    string refusal = WOSK_Followers.Refusal(akFollower)
+    if refusal != ""
+        _followerMsg = akFollower.GetDisplayName() + " cannot be hired (" + refusal + ")."
+        Debug.Trace("WOSK_Controller: HireFollower refused, " + akFollower + " - " + refusal)
+        return -1
+    endIf
+    ; P4: the hold's housecarl keeps his post.
+    if akFollower == GetHousecarlForHold(0)
+        _followerMsg = akFollower.GetDisplayName() + " is the housecarl of the hold and keeps his post."
+        return -1
+    endIf
+    Int cap = GetHireCap(0)
+    Int count = GetWorkerCount(0)
+    if count >= cap
+        _followerMsg = "You can employ only " + cap + " worker(s) in this hold."
+        return -1
+    endIf
+    string blocked = HireBlockReason(asProfession)
+    if blocked != ""
+        _followerMsg = HireBlockText(blocked)
+        return -1
+    endIf
+    string house = ""
+    if WOSK_PlayerHouse.RequiresHouse(asProfession)
+        house = WOSK_PlayerHouse.ChosenHouse()
+        if house == ""
+            _followerMsg = WOSK_PlayerHouse.NeedsHouseText(akFollower.GetDisplayName())
+            return -1
+        endIf
+    endIf
+    ReferenceAlias slot = None
+    Int slotIndex = -1
+    Int i = 0
+    while i < WorkerPoolSize && !slot
+        ReferenceAlias a = WorkerPool.GetAlias(i) as ReferenceAlias
+        if a && !a.GetReference()
+            slot = a
+            slotIndex = i
+        endIf
+        i += 1
+    endWhile
+    if !slot
+        _followerMsg = "Every worker slot is taken."
+        return -1
+    endIf
+    ; P9: whatever another mod linked him to is saved once, before the first link of ours.
+    Keyword link = Game.GetFormFromFile(0x0005D5E7, "Skyrim.esm") as Keyword
+    if link && !StorageUtil.HasIntValue(akFollower, WOSK_Followers.KeySavedLink())
+        StorageUtil.SetFormValue(akFollower, WOSK_Followers.KeyPrevLink(), akFollower.GetLinkedRef(link))
+        StorageUtil.SetIntValue(akFollower, WOSK_Followers.KeySavedLink(), 1)
+    endIf
+    if !WOSK_Followers.DismissFromFramework(akFollower)
+        _followerMsg = akFollower.GetDisplayName() + " is still bound to his follower framework."
+        Debug.Trace("WOSK_Controller: HireFollower stopped, " + akFollower + " still a teammate after the dismissal")
+        return -1
+    endIf
+    string tier = WOSK_Followers.TierFor(akFollower, asProfession)
+    StorageUtil.SetIntValue(akFollower, WOSK_Followers.KeyMark(), 1)
+    StorageUtil.SetStringValue(akFollower, "WOSK_Profession", asProfession)
+    StorageUtil.SetStringValue(akFollower, "WOSK_Tier", tier)
+    StorageUtil.SetFloatValue(akFollower, "WOSK_HiredDay", Utility.GetCurrentGameTime())
+    ; P6: home is his own in Whiterun; elsewhere the inn marker, one step apart per worker.
+    if house != ""
+        ; D223: the cook lives in the house, as any cook.
+        StorageUtil.UnsetIntValue(akFollower, WOSK_Followers.KeyNativeHome())
+    elseIf WOSK_Followers.InWhiterun(akFollower)
+        StorageUtil.SetIntValue(akFollower, WOSK_Followers.KeyNativeHome(), 1)
+    else
+        StorageUtil.UnsetIntValue(akFollower, WOSK_Followers.KeyNativeHome())
+        StorageUtil.SetFloatValue(akFollower, WOSK_Followers.KeyHomeOffset(), 90.0 * count)
+    endIf
+    slot.ForceRefTo(akFollower)
+    WOSK_WorkerState.Reconcile(akFollower)
+    Int tierFloor = WOSK_Registry.GetTierInt(asProfession, tier, "minContracts", 0)
+    if tierFloor > StorageUtil.GetIntValue(akFollower, "WOSK_ContractsCompleted", 0)
+        StorageUtil.SetIntValue(akFollower, "WOSK_ContractsCompleted", tierFloor)
+    endIf
+    if house != ""
+        WOSK_PlayerHouse.MoveIn(akFollower, house)
+    else
+        ; Fase 34 etapa 5 (D308, V086): hiring sends him home at once, as every other send.
+        (slot as WOSK_WorkerAliasScript).SendHomeOnHire()
+    endIf
+    Debug.Notification("Honest Work: " + akFollower.GetDisplayName() + " now works for you.")
+    Debug.Trace("WOSK_Controller: follower hired " + akFollower + " as " + asProfession + " (" + tier + ", skill " + WOSK_Followers.SkillLevel(akFollower, asProfession) + \
+                ") into slot " + slotIndex + ", nativeHome=" + StorageUtil.GetIntValue(akFollower, WOSK_Followers.KeyNativeHome(), 0) + ", house='" + house + "'")
+    RefreshWorkerList()
+    RefreshHistory()
+    _followerMsg = akFollower.GetDisplayName() + " now works for you as " + asProfession + " (" + WOSK_Names.TierLabel(tier) + ")."
+    RefreshRecruitList("")
+    return slotIndex
+EndFunction
+
+Float _hireSince = 0.0
+
+; The page sends the row of the list it was last given.
+Function HireFollowerFromPanel(Int aiIndex, string asProfession)
+    if _followerList && aiIndex >= 0 && aiIndex < _followerList.Length && _followerList[aiIndex]
+        ; Fase 35 etapa 9 (V102): one hire at a time. The dismissal from the framework waits 2 s, and
+        ; the second click passed the IsFollower check before the first one set the mark. The stamp is
+        ; real time, so a stack lost mid-way frees itself after 20 s.
+        Float now = Utility.GetCurrentRealTime()
+        if _hireSince > 0.0 && now >= _hireSince && now - _hireSince < 20.0
+            _followerMsg = "A hire is already under way."
+            Debug.Trace("WOSK_Controller: HIRE-DOBRO-RECUSADO " + _followerList[aiIndex] + " as " + asProfession + " - a hire started " + (now - _hireSince) + " s ago is still running")
+        else
+            _hireSince = now
+            HireFollower(_followerList[aiIndex], asProfession)
+            _hireSince = 0.0
+        endIf
+    else
+        _followerMsg = "That follower is no longer in the list."
+    endIf
+    RefreshRecruitList("")
+EndFunction
+
+; Fase 35 etapa 4: the Bodyguards section sends the row of the same list.
+Function AssignGuardFromPanel(Int aiIndex)
+    if aiIndex < 0
+        ; Fase 35 etapa 6: a negative order is a release (-(1 + row)).
+        ReleaseGuardFromPanel(aiIndex)
+        return
+    endIf
+    if _followerList && aiIndex >= 0 && aiIndex < _followerList.Length && _followerList[aiIndex]
+        AssignGuard(_followerList[aiIndex])
+    else
+        _followerMsg = "That follower is no longer in the list."
+    endIf
+    RefreshRecruitList("")
+EndFunction
+
+; Sends the followers to the page: names, where they stand, the id of the rule that
+; refuses them ("" when free) and the tier each trade would give is worked out
+; by the page from the skill list below. Called at the end of RefreshRecruitList.
+Function RefreshFollowerList(string asMessage)
+    string msg = asMessage
+    if msg == "" && _followerMsg != ""
+        msg = _followerMsg
+    endIf
+    _followerMsg = ""
+    string[] names = new string[16]
+    string[] places = new string[16]
+    string[] refused = new string[16]
+    string[] tiers = new string[16]
+    Int count = 0
+    Int needsPo3 = 0
+    _followerList = new Actor[8]
+    if !WOSK_Followers.Po3Present()
+        needsPo3 = 1
+    else
+        Actor[] found = PO3_SKSEFunctions.GetPlayerFollowers()
+        Int i = 0
+        while found && i < found.Length && count < 8
+            Actor f = found[i]
+            if f && WOSK_Guards.IsGuard(f)
+                ; Fase 35 etapa 6: a guard the framework took back (its dialogue) stops being a guard.
+                if ReleaseGuard(f, "rejoined the follower framework")
+                    msg = f.GetDisplayName() + " rejoined you as a follower and is no longer your bodyguard."
+                endIf
+            elseIf f && !WOSK_Followers.IsFollower(f)
+                _followerList[count] = f
+                names[count] = f.GetDisplayName()
+                Location loc = f.GetCurrentLocation()
+                if loc
+                    places[count] = loc.GetName()
+                endIf
+                refused[count] = WOSK_Followers.Refusal(f)
+                tiers[count] = _FollowerTiers(f)
+                count += 1
+            endIf
+            i += 1
+        endWhile
+    endIf
+    ; Fase 35 etapa 6: the bodyguards ride the same channel, after the followers; refused "GUARD" is
+    ; the mark, the place field says where he waits or whom he escorts. The release order sends
+    ; -(1 + row), which GuardRowToIndex maps back.
+    _guardRowStart = count
+    _guardRows = new Actor[8]
+    Int g = 0
+    Int gn = WOSK_Guards.GuardCount()
+    while g < gn && count < 16 && g < 8
+        Actor guard = WOSK_Guards.GuardAt(g)
+        if guard
+            _guardRows[g] = guard
+            names[count] = guard.GetDisplayName()
+            Actor boss = StorageUtil.GetFormValue(guard, WOSK_Guards.KeyEscorting(), None) as Actor
+            if boss
+                places[count] = "Escorting " + boss.GetDisplayName()
+            else
+                Location gloc = guard.GetCurrentLocation()
+                if gloc
+                    places[count] = WOSK_PlayerHouse.WaitsAtText(gloc.GetName())
+                else
+                    places[count] = "Waits for a contract"
+                endIf
+            endIf
+            refused[count] = "GUARD"
+            tiers[count] = ""
+            count += 1
+        endIf
+        g += 1
+    endWhile
+    WOSK_Panel.SetFollowerList(names, places, refused, tiers, count, needsPo3, msg)
+EndFunction
+
+Actor[] _guardRows
+Int _guardRowStart = 0
+
+; Fase 35 etapa 8 (V100): Attach and Detach change who is free; the page decides "With
+; bodyguard" from the list it was last given, so the list goes again at those moments. The
+; pending message is kept for the next real refresh.
+Function RefreshGuardState()
+    if WOSK_Guards.GuardCount() < 1
+        return
+    endIf
+    string keep = _followerMsg
+    RefreshFollowerList("")
+    _followerMsg = keep
+    Debug.Trace("WOSK_Controller: GUARDA-LISTA-ENVIADA guards=" + WOSK_Guards.GuardCount())
+EndFunction
+
+; Fase 35 etapa 6 (Q5): free, the gold is not returned. A guard on a contract is not released
+; (the escort ends first). Fase 35 etapa 8 (V100): abRecruit puts him back into the follower
+; framework he was taken out of (the release from the panel); when the framework itself took him
+; back (its dialogue) there is nothing to give back.
+Bool Function ReleaseGuard(Actor akGuard, string asWhy, Bool abRecruit = false)
+    if !akGuard || !WOSK_Guards.IsGuard(akGuard)
+        return false
+    endIf
+    if StorageUtil.GetFormValue(akGuard, WOSK_Guards.KeyEscorting(), None)
+        _followerMsg = akGuard.GetDisplayName() + " is escorting a worker and cannot be released now."
+        Debug.Trace("WOSK_Controller: GUARDA-SOLTAR-RECUSADO " + akGuard + " - escorting, why=" + asWhy)
+        return false
+    endIf
+    WOSK_Guards.Forget(akGuard)
+    akGuard.EvaluatePackage()
+    Bool back = false
+    if abRecruit
+        ; His own post (house sandbox) is off with Forget; the framework takes him from here.
+        back = WOSK_Followers.RecruitToFramework(akGuard)
+        if !back
+            _followerMsg = akGuard.GetDisplayName() + " could not rejoin your followers; talk to him to recruit him."
+        endIf
+    endIf
+    Debug.Trace("WOSK_Controller: GUARDA-SOLTO " + akGuard + " why=" + asWhy + " guards=" + WOSK_Guards.GuardCount() + " recruited=" + back as Int)
+    return true
+EndFunction
+
+; The page sends the row it was given, negated: -(1 + row). Row minus the first guard row is
+; the slot in _guardRows.
+Function ReleaseGuardFromPanel(Int aiOrder)
+    Int row = -aiOrder - 1
+    Int slot = row - _guardRowStart
+    if _guardRows && slot >= 0 && slot < _guardRows.Length && _guardRows[slot]
+        Actor guard = _guardRows[slot]
+        if ReleaseGuard(guard, "released from the panel", true)
+            if _followerMsg == ""
+                _followerMsg = guard.GetDisplayName() + " is no longer your bodyguard and follows you again. The gold is not returned."
+            endIf
+        endIf
+    else
+        _followerMsg = "That bodyguard is no longer in the list."
+    endIf
+    RefreshRecruitList("")
+EndFunction
+
+; "miner:worker,hunter:master,..." - what each trade would give him, so the page can
+; show the tier before the click without holding the table itself.
+string Function _FollowerTiers(Actor akFollower)
+    string out = ""
+    Int n = WOSK_Registry.CountProfessions()
+    Int i = 0
+    while i < n
+        string p = WOSK_Registry.GetProfessionId(i, "")
+        if p != ""
+            if out != ""
+                out += ","
+            endIf
+            out += p + ":" + WOSK_Followers.TierFor(akFollower, p)
+        endIf
+        i += 1
+    endWhile
+    return out
 EndFunction
 
 ; D104: a candidate's tier is rolled once, by each tier's
@@ -1543,6 +1880,8 @@ Int Function RefreshRecruitList(string asMessage)
         shownLine = "Nobody has been found yet. Talk to the Hiring Agent, or to the people looking for work around the hold."
     endIf
     WOSK_Panel.SetRecruitList(names, professions, tiers, prices, spots, places, count, GetWorkerCount(0), GetHireCap(0), canHire, shownLine, blockedBy)
+    ; Fase 34 etapa 2 (D299): the followers section of the same tab.
+    RefreshFollowerList("")
     return count
 EndFunction
 
@@ -1873,6 +2212,12 @@ Bool Function RequestCollectViaHousecarl(Int aiAliasIndex)
         Debug.Notification("Honest Work: Your housecarl is not available.")
         return false
     endIf
+    ; Fase 34 etapa 2 (P4): the housecarl himself does not go to collect when he is a worker.
+    if WOSK_Followers.IsFollower(housecarl)
+        Debug.Trace("WOSK_Controller: RequestCollectViaHousecarl refused - the housecarl works for the player")
+        Debug.Notification("Honest Work: Your housecarl works for you; he cannot fetch the batch.")
+        return false
+    endIf
     ReferenceAlias a = WorkerPool.GetAlias(aiAliasIndex) as ReferenceAlias
     if !a
         Debug.Trace("WOSK_Controller: RequestCollectViaHousecarl refused - alias " + aiAliasIndex + " empty")
@@ -1982,6 +2327,14 @@ Function SendAway(Actor akWorker, Int aiFormId = 0)
     WOSK_Outfits.Restore(akWorker)
     WOSK_WorkerState.Clear(akWorker)
     ActorUtil.ClearPackageOverride(akWorker)
+    if WOSK_Followers.IsFollower(akWorker)
+        ; Fase 34 etapa 4 (A4, D306): a follower is a unique NPC of the game; he is released
+        ; (packages, link, marks - WOSK_Followers.ReleaseFollower), never disabled nor queued
+        ; for deletion. This is the only way out, for the panel and the dialogue alike.
+        WOSK_Followers.ReleaseFollower(akWorker)
+        Debug.Trace("WOSK_Controller: follower " + akWorker + " released, not disabled")
+        return
+    endIf
     akWorker.Disable()
     if formId < 0 && formId >= -16777216
         ; allowDuplicate=false: the default is true, so without it a worker
@@ -1996,11 +2349,110 @@ Bool Function RequestContract(Int aiAliasIndex, string asTaskId, Bool abConfirmO
     if StringUtil.GetLength(asTaskId) > 6 && StringUtil.Substring(asTaskId, 0, 6) == "house:"
         return _HouseOrder(aiAliasIndex, StringUtil.Substring(asTaskId, 6))
     endIf
+    ; Fase 35 etapa 4 (D313): "<taskId>|g" = the player said yes to a bodyguard. The mod event
+    ; carries one string and one float; the bit rides on the string, after a bar no task id has.
+    string taskId = asTaskId
+    Bool guarded = false
+    Int bar = StringUtil.Find(asTaskId, "|")
+    if bar >= 0
+        guarded = StringUtil.Substring(asTaskId, bar + 1) == "g"
+        taskId = StringUtil.Substring(asTaskId, 0, bar)
+    endIf
     ReferenceAlias a = WorkerPool.GetAlias(aiAliasIndex) as ReferenceAlias
     if !a
         return false
     endIf
-    return (a as WOSK_WorkerAliasScript).IssueContract(asTaskId, "", abConfirmOccupied)
+    return (a as WOSK_WorkerAliasScript).IssueContract(taskId, "", abConfirmOccupied, guarded)
+EndFunction
+
+; Fase 35 etapa 4 (D313, B1, B2, B9, Q4): a follower of the Recruit tab becomes a bodyguard.
+; One guard per slot of the hold, apart from the workers; the assignment is paid once, the
+; gold is gone; the framework lets him go first, as for a worker (D298). Returns false with
+; the reason in FollowerProblem.
+;
+; Fase 35 etapa 6 (V096): the IsGuard check below runs before the latent part (the framework's
+; dismissal), so a second click arriving while the first still works passed it and charged twice.
+; One assignment at a time: the second event is refused while the first is under way. The stamp is
+; real time, so a stack lost mid-way (load, crash) frees itself after kGuardAssignWindow seconds.
+Float _guardAssignSince = 0.0
+
+Bool Function AssignGuard(Actor akFollower)
+    Float now = Utility.GetCurrentRealTime()
+    if _guardAssignSince > 0.0 && now >= _guardAssignSince && now - _guardAssignSince < 20.0
+        _followerMsg = "An assignment is already under way."
+        Debug.Trace("WOSK_Controller: GUARDA-DOBRO-RECUSADO " + akFollower + " - an assignment started " + (now - _guardAssignSince) + " s ago is still running")
+        return false
+    endIf
+    _guardAssignSince = now
+    Bool done = _AssignGuardWork(akFollower)
+    _guardAssignSince = 0.0
+    return done
+EndFunction
+
+Bool Function _AssignGuardWork(Actor akFollower)
+    _followerMsg = ""
+    if !akFollower
+        _followerMsg = "That follower cannot be assigned."
+        return false
+    endIf
+    string name = akFollower.GetDisplayName()
+    if WOSK_Followers.IsFollower(akFollower)
+        _followerMsg = name + " already works for you."
+        return false
+    endIf
+    if WOSK_Guards.IsGuard(akFollower)
+        _followerMsg = name + " is already your bodyguard."
+        return false
+    endIf
+    string refusal = WOSK_Followers.Refusal(akFollower)
+    if refusal != ""
+        _followerMsg = name + " cannot be assigned (" + refusal + ")."
+        Debug.Trace("WOSK_Controller: AssignGuard refused, " + akFollower + " - " + refusal)
+        return false
+    endIf
+    if akFollower == GetHousecarlForHold(0)
+        _followerMsg = name + " is the housecarl of the hold and keeps his post."
+        return false
+    endIf
+    Int cap = GetHireCap(0)
+    if WOSK_Guards.GuardCount() >= cap
+        _followerMsg = "You can have only " + cap + " bodyguard(s) in this hold."
+        return false
+    endIf
+    Int fee = WOSK_Guards.AssignFee()
+    Actor player = Game.GetPlayer()
+    Form goldForm = Game.GetFormFromFile(0x0000000F, "Skyrim.esm")
+    if player.GetItemCount(goldForm) < fee
+        _followerMsg = "You need " + fee + " gold to assign " + name + " as a bodyguard."
+        return false
+    endIf
+    ; P9: what another mod linked him to is kept once, before the first link of ours.
+    Keyword link = Game.GetFormFromFile(0x0005D5E7, "Skyrim.esm") as Keyword
+    if link && !StorageUtil.HasIntValue(akFollower, WOSK_Followers.KeySavedLink())
+        StorageUtil.SetFormValue(akFollower, WOSK_Followers.KeyPrevLink(), akFollower.GetLinkedRef(link))
+        StorageUtil.SetIntValue(akFollower, WOSK_Followers.KeySavedLink(), 1)
+    endIf
+    if !WOSK_Followers.DismissFromFramework(akFollower)
+        _followerMsg = name + " is still bound to his follower framework."
+        Debug.Trace("WOSK_Controller: AssignGuard stopped, " + akFollower + " still a teammate after the dismissal")
+        return false
+    endIf
+    player.RemoveItem(goldForm, fee)
+    StorageUtil.SetIntValue(akFollower, WOSK_Guards.KeyGuard(), 1)
+    StorageUtil.FormListAdd(None, WOSK_Guards.ListKey(), akFollower, false)
+    ; P6: home is his own in Whiterun; elsewhere the inn marker, one step apart per guard.
+    if WOSK_Followers.InWhiterun(akFollower)
+        StorageUtil.SetIntValue(akFollower, WOSK_Followers.KeyNativeHome(), 1)
+    else
+        StorageUtil.UnsetIntValue(akFollower, WOSK_Followers.KeyNativeHome())
+        StorageUtil.SetFloatValue(akFollower, WOSK_Followers.KeyHomeOffset(), 90.0 * (WOSK_Guards.GuardCount() + GetWorkerCount(0)))
+    endIf
+    WOSK_LedgerScript.RecordGuardAssigned(akFollower, fee)
+    WOSK_Guards.SendToPost(akFollower, true)
+    Debug.Notification("Honest Work: " + name + " is now your bodyguard (" + fee + " gold).")
+    Debug.Trace("WOSK_Controller: GUARDA-ATRIBUIDO " + akFollower + " fee=" + fee + " nativeHome=" + StorageUtil.GetIntValue(akFollower, WOSK_Followers.KeyNativeHome(), 0) + " guards=" + WOSK_Guards.GuardCount() + "/" + cap)
+    _followerMsg = name + " is now your bodyguard."
+    return true
 EndFunction
 
 ; D137: panel path for an occupied gamble - same as above but forwarded as a

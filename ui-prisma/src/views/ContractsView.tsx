@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 
 import {
   HostBridge,
+  type HwFollowersPayload,
   type HwInitPayload,
   type HwSourceRow,
   type HwSourcesPayload,
@@ -20,8 +21,9 @@ import {
   batchRangeFor,
   contractText,
   goldWhole,
-  hoursFor,
-  hoursText,
+  durationText,
+  guardBlockText,
+  guardedContractText,
   isKnownReason,
   lowerFirst,
   noSource,
@@ -42,6 +44,7 @@ interface Props {
   worker: HwWorkerRow | undefined;
   sources: HwSourcesPayload | null;
   sendOrder: SendOrder;
+  followers?: HwFollowersPayload | null;
 }
 
 // The unknown-source notes already sent to the host (once per task and reason, per page load).
@@ -52,7 +55,7 @@ const notedUnknown = new Set<string>();
 // needs; a detail card with the facts and the button. Same requests as before
 // (Fase 15 filter and lock, D137 occupied gamble); every refusal is Papyrus's
 // and comes back on screen (D171).
-export function ContractsView({ config, worker, sources, sendOrder }: Props) {
+export function ContractsView({ config, worker, sources, sendOrder, followers }: Props) {
   const [taskId, setTaskId] = useState("");
   const [occupiedConfirm, setOccupiedConfirm] = useState<string | null>(null);
   useEffect(() => setOccupiedConfirm(null), [worker?.slot, taskId]);
@@ -162,7 +165,7 @@ export function ContractsView({ config, worker, sources, sendOrder }: Props) {
                           >
                             <span className="hw-node-name">{t.label}</span>
                             <span className="hw-node-meta">
-                              <span className="hw-node-hours">{hoursText(hoursFor(t, tier))}</span>
+                              <span className="hw-node-hours">{durationText(t, tier)}</span>
                               {tag && (
                                 <span className={`hw-tag hw-tag-${tag.tone}`} title={tag.hint}>
                                   {tag.label}
@@ -187,12 +190,15 @@ export function ContractsView({ config, worker, sources, sendOrder }: Props) {
             <h2 className="hw-detail-title">{task.label}</h2>
             <SourceLine row={rowOf(task)} hold={hold} locked={taskLocked(task, worker)} loaded={loaded} profession={worker.profession} />
             <div className="hw-detail-figures">
-              <Figure value={hoursText(hoursFor(task, tier))} label="Duration" />
+              <Figure value={durationText(task, tier)} label="Duration" />
               <Figure value={`${unitsMin}-${unitsMax}`} label="Units" />
               <Figure value={`${Math.round(task.incidentChance * 100)}%`} label="Incident" />
               <Figure value={goldWhole(task.basePricePerUnit)} label="Gold a unit" />
             </div>
             {contractText(task) && <p className="hw-detail-line hw-contract-cost">{contractText(task)}</p>}
+            {guardedContractText(task, config.guardFee) && (
+              <p className="hw-detail-line hw-contract-cost">{guardedContractText(task, config.guardFee)}</p>
+            )}
             {(task.ingredientCostPerUnit ?? 0) > 0 && (
               <p className="hw-detail-line">Ingredients: {goldWhole(task.ingredientCostPerUnit ?? 0)} gold a unit, at cost, in the price.</p>
             )}
@@ -212,6 +218,7 @@ export function ContractsView({ config, worker, sources, sendOrder }: Props) {
               occupiedConfirm={occupiedConfirm}
               setOccupiedConfirm={setOccupiedConfirm}
               sendOrder={sendOrder}
+              guardBlock={guardBlockText(followers, worker.profession, task.id)}
             />
           </section>
         </div>
@@ -255,8 +262,9 @@ function IssueButton(props: {
   occupiedConfirm: string | null;
   setOccupiedConfirm: (id: string | null) => void;
   sendOrder: SendOrder;
+  guardBlock: string;
 }) {
-  const { task, worker, row, occupiedConfirm, setOccupiedConfirm, sendOrder } = props;
+  const { task, worker, row, occupiedConfirm, setOccupiedConfirm, sendOrder, guardBlock } = props;
   if (taskLocked(task, worker)) {
     // Not hidden and not silent: the task stays with the tier it needs.
     return (
@@ -328,11 +336,23 @@ function IssueButton(props: {
     );
   }
   return (
-    <button
-      className="hw-button is-primary hw-button-wide"
-      onClick={() => sendOrder(`Contract: ${task.label} for ${worker.name}.`, () => HostBridge.issueContract(worker.slot, task.id))}
-    >
-      Issue contract
-    </button>
+    <div className="hw-button-row">
+      <button
+        className="hw-button is-primary hw-button-wide"
+        onClick={() => sendOrder(`Contract: ${task.label} for ${worker.name}.`, () => HostBridge.issueContract(worker.slot, task.id))}
+      >
+        Issue contract
+      </button>
+      <button
+        className="hw-button hw-button-wide"
+        disabled={guardBlock !== ""}
+        title={guardBlock || "A bodyguard walks with the worker: a fee on top of the price, and a fifth of the risk of death."}
+        onClick={() =>
+          sendOrder(`Contract with a bodyguard: ${task.label} for ${worker.name}.`, () => HostBridge.issueContract(worker.slot, task.id, true))
+        }
+      >
+        With bodyguard
+      </button>
+    </div>
   );
 }

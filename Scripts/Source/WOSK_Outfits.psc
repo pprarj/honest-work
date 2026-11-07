@@ -94,6 +94,11 @@ EndFunction
 ; Puts the trade's outfit on. Idempotent: a worker already wearing it is left
 ; alone, so the load-time reconcile does not redress anyone.
 Function Wear(Actor akWorker, string asProfession) global
+    ; Fase 34 etapa 2 (P1, D299): a follower works in what he wears; the outfit systems of
+    ; the NFF and the AFT fight a piece put on by script.
+    if WOSK_Followers.IsFollower(akWorker)
+        return
+    endIf
     _WearOutfit(akWorker, asProfession)
     ; Fase 28 conserto 1 (D238): the hunter carries a hunting bow with the outfit.
     WearGear(akWorker, asProfession)
@@ -641,7 +646,8 @@ EndFunction
 ; Fase 31 conserto 1 (D256): the trade pieces come off and the default pieces kept in
 ; KeyStash go back on, for a worker who stays alive. A dead one keeps what he wears.
 Function Restore(Actor akWorker, Bool abReturnGifts = true) global
-    if !akWorker
+    ; Fase 34 etapa 2: a follower was never dressed by the mod and holds no gift (P1, P11).
+    if !akWorker || WOSK_Followers.IsFollower(akWorker)
         return
     endIf
     if abReturnGifts
@@ -700,7 +706,7 @@ EndFunction
 ; Every load: a hired worker who has no outfit key (hired before Fase 27, or the
 ; key lost) is dressed for his trade. Idempotent.
 Function Reconcile(Actor akWorker, string asProfession) global
-    if !akWorker
+    if !akWorker || WOSK_Followers.IsFollower(akWorker)
         return
     endIf
     Wear(akWorker, asProfession)

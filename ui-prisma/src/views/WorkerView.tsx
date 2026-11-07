@@ -32,6 +32,7 @@ import {
   injuredLine,
   isRetired,
   pensionHint,
+  sameId,
   stateTone,
   statsFor,
   taskLabel,
@@ -196,7 +197,7 @@ export function WorkerView({ config, worker, history, gear, dismissFee, house, s
                   <tr key={i}>
                     <td className="hw-muted">{history ? dayLabel(c.day, history.now) : ""}</td>
                     <td>{taskLabel(config.tasks, c.taskId)}</td>
-                    <td className={c.outcome === "SUCCESS" ? "hw-good" : "hw-bad"}>{outcomeText(c.outcome)}</td>
+                    <td className={sameId(c.outcome, "SUCCESS") ? "hw-good" : "hw-bad"}>{outcomeText(c.outcome)}</td>
                     <td className="hw-num">{c.qty > 0 ? c.qty : "-"}</td>
                     <td className="hw-num">{c.cost > 0 ? gold(c.cost) : "-"}</td>
                     <td className="hw-num">{c.value > 0 ? gold(c.value) : "-"}</td>

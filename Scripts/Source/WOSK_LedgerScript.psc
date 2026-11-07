@@ -167,6 +167,26 @@ Function RecordIssued(Actor akWorker, string asTaskId, Int aiCostGold) global
     RecordEvent("ISSUED", akWorker, asTaskId, 0, aiCostGold)
 EndFunction
 
+; Fase 35 etapa 4 (B6, D313): the bodyguard's fee has its own line and its own total, apart from
+; the cost of the contract (WOSK_StatGoldSpent and the worker's WOSK_GoldSpent do not hold it).
+; GUARD_FEE: the name is the worker's, taskId the contract, qty 0, gold the fee of that contract.
+; GUARD_ASSIGN: the name is the guard's, the fee paid once to assign him.
+Function RecordGuardFee(Actor akWorker, Actor akGuard, string asTaskId, Int aiFee) global
+    StorageUtil.AdjustIntValue(None, "WOSK_StatGuardFees", aiFee)
+    ; Fase 35 etapa 6: the guard's name rides after an "@" in the task field, so the statement can
+    ; say who guarded whom (an older line without it still reads).
+    string taskField = asTaskId
+    if akGuard
+        taskField = asTaskId + "@" + akGuard.GetDisplayName()
+    endIf
+    RecordEvent("GUARD_FEE", akWorker, taskField, 0, aiFee)
+EndFunction
+
+Function RecordGuardAssigned(Actor akGuard, Int aiFee) global
+    StorageUtil.AdjustIntValue(None, "WOSK_StatGuardFees", aiFee)
+    RecordEvent("GUARD_ASSIGN", akGuard, "", 0, aiFee)
+EndFunction
+
 ; Called once per contract, when the outcome is settled
 ; (WOSK_WorkerAliasScript._ResolveContractCompletion). aiQty and aiValue are 0
 ; for an outcome with no batch. aiValue is the batch at the game's own value of
